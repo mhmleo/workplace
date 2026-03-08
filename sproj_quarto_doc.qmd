@@ -1,0 +1,487 @@
+---
+title: "Exploratory Data Analysis for SPROJ"
+author: "Leonardo Andrade"
+format: 
+  pdf:
+    warning: false
+    message: false
+editor: visual
+---
+
+# Load Packages
+
+In order to do this Exploratory Data Analysis, I will use the following packages:
+
+```{r, load packages, warning= FALSE}
+library(ggplot2) # for plotting data
+library(readxl) # for reading excel files if necessary
+library(dplyr) # for data wrangling
+# library(arrow)
+library(janitor) # for cleaning messy names of datasets
+library(readr) # for reading files
+library(gt) # for making 'publication ready' tables
+```
+
+This senior project document will serve as the backbone of methodology and analysis part of the Senior Project"
+
+# Motivation
+
+According to the UN Trade Hub and Development:
+
+(https://unctadstat.unctad.org/datacentre/reportInfo/US.RCA)
+
+"Revealed comparative advantage (RCA) is based on Ricardian trade theory, which posits that patterns of trade among countries are governed by their relative differences in productivity. Although such productivity differences are difficult to observe, an RCA metric can be readily calculated using trade data to "reveal" such differences. While the metric can be used to provide a general indication and first approximation of a country's competitive export strengths, it should be noted that applied national measures which affect competitiveness such as tariffs, non-tariff measures, subsidies and others are not taken into account in the RCA metric."
+
+"When a country has a revealed comparative advantage for a given product (RCA \>1), it is inferred to be a competitive producer and exporter of that product relative to a country producing and exporting that good at or below the world average. A country with a revealed comparative advantage in product i is considered to have an export strength in that product. The higher the value of a country’s RCA for product i, the higher its export strength in product i."
+
+Part of this senior project aims to explain shifts in Revealed Comparative Advantage through a political economic lens, specifically in Mexico's Agriculture industry As the UN mentions, this RCA is merely an inference variable, and is used as a 'first approximation' in comparative advantage. Many of the shifts in RCA over time are not captured. I will use classical economic theory, neoclassical theory, economic literature, and papers to describe shifts in the RCA through a political economic lens. My sector analysis in these documents will be done in order of sector code and number, starting from 01; Animals Live, throughout the rest of the agricultural sector.
+
+The agricultural sector is one that is extremely broad- ranging from plants and livestock, to coffee beans and even honey. In order to further analyze the RCA index, we must discern what codes constitute the agriculture industry. Each sector has its own general product code at the 2 digit, 4 digit, and 6 digit level, with each digits being more specific in each product. Using the International Trade Administration (ITA) Harmonized System (HS) codes, we will use these definitions to discern what products are part of the agriculture industry. There is opinions in the literature that showws variations in the product codes that is part of the 'agricultural sector.' I will use the definitions from this paper (https://www.researchgate.net/publication/332551060_Changes_in_Foreign_Trade_in_Agricultural_Products_between_China_and_Poland) to classify the codes that belongs in the agricultural sector. Furthermore, I will analyze each sector at a general level, starting at the 2 digit, and then up to 4 digits. Due to constraints and limitations of the publicly available data, the maximum scope of analysis is up to the 4 digit HS code level. The data will also be split up into multiple time periods. Period A will be from 1992-2000, period B will be from 2000-2008, and period C will be from 2008-2016, period D will be from 2016-2024.
+
+# Functions
+
+The section below describes the functions which are necessary in computing this analysis, I have made comments in the code chunks in order to further expand on each line of code and what it does.
+
+### Necessary Variables Function
+
+```{r, arrange times}
+## This is a function that takes in only the necessary variables for an RCA analysis, including arranging times in order from least to greatest
+
+necessary_variables <- function(df) { # inputs a dataframe
+  df |> 
+    arrange(period) |> #arranges the df by year
+    select(period, reporterISO, cmdCode, flowCode, qty, netWgt, fobvalue, primaryValue) #selects the variables necessary for RCA
+}
+```
+
+### RCA Function
+
+```{r, RCA calculation}
+## RCA calculation function
+
+#inputs country exports of product i , country's total exports, world exports of product i, and world total exports
+calculate_rca <- function(country_product, country_total, world_product, world_total) {
+  
+  #join by period to align years
+  rca_df <- country_product |>
+    inner_join(country_total, by = "period", suffix = c("_prod", "_total")) |>
+    inner_join(world_product, by = "period") |>
+    inner_join(world_total, by = "period", suffix = c("_world_prod", "_world_total")) |>
+    mutate(
+      RCA = (fobvalue_prod / fobvalue_total) / 
+            (fobvalue_world_prod / fobvalue_world_total)
+    ) |>
+    select(period, RCA)
+  
+  return(rca_df)
+}
+
+```
+
+### Generalized RCA Function
+
+```{r}
+calculate_rca_generalized <- function(country_sector_df,
+                                      world_sector_df,
+                                      country_all_df,
+                                      world_all_df) {
+  
+  #first, I aggregate by year and product, with variables period, and cmdCode
+  country_prod <- country_sector_df |>
+    group_by(period, cmdCode) |>
+    summarise(country_product_value = sum(fobvalue, na.rm = TRUE), .groups = "drop")
+  
+  world_prod <- world_sector_df |>
+    group_by(period, cmdCode) |>
+    summarise(world_product_value = sum(fobvalue, na.rm = TRUE), .groups = "drop")
+  
+  #next, I aggregate total exports using fobvalue  (denominator)
+  country_all <- country_all_df |>
+    group_by(period) |>
+    summarise(total_country_value = sum(fobvalue, na.rm = TRUE), .groups = "drop")
+  
+  world_all <- world_all_df |>
+    group_by(period) |>
+    summarise(total_world_value = sum(fobvalue, na.rm = TRUE), .groups = "drop")
+  
+  # 3. next, I merge everytjing by year and commodity code
+  rca_df <- country_prod |>
+    left_join(world_prod, by = c("period", "cmdCode")) |>
+    left_join(country_all, by = "period") |>
+    left_join(world_all, by = "period") |>
+    mutate(
+      RCA = (country_product_value / total_country_value) /
+            (world_product_value / total_world_value),
+      has_CA = RCA >= 1
+    ) |>
+    arrange(period, cmdCode)
+  
+  return(rca_df)
+}
+```
+
+# Necessary Dataframes
+
+```{r}
+#mexico total exports time 1992 -> 2000
+
+mx_xports_all <- read_csv("mx_total_xports_world/mx_xports_all.csv")
+
+## world exports of 07 time 1992 -> 2000
+
+world_xports_all <- read_csv("world_total_xports/world_xports_all.csv")
+
+```
+
+```{r, Necessary dataframes}
+mx_xports_all <- necessary_variables(mx_xports_all) # dataframe for all of mexico's exports of all products
+world_xports_all <- necessary_variables(world_xports_all) # dataframe for world exports of all products
+```
+
+We need the dataframes above in order to complete the rest of the RCA Analysis. They are imperative in order so that the RCA variable can be calculated at a snaoshto in time, and
+
+# 01 Animals; Live
+
+This section will calculate RCA over time before NAFTA of the animal section, containing HS product code of 0101 to 0106.
+
+```{r}
+## load the datasets
+mx_xports_sector_01 <- read_csv("mx_xports_prod_i/mx_xports_sector_01.csv")
+world_xports_sector_01 <- read_csv("world_xports_prod_i/world_xports_sector_01.csv")
+
+
+## necessary variables
+
+mx_xports_sector_01 <- necessary_variables(mx_xports_sector_01)
+world_xports_sector_01 <- necessary_variables(world_xports_sector_01)
+
+
+# calculate RCA
+
+
+rca_sector_01 <- calculate_rca_generalized(mx_xports_sector_01, world_xports_sector_01, mx_xports_all, world_xports_all)
+```
+
+ggplot sector 01 from 1992 - 2000.
+
+```{r}
+ggplot(rca_sector_01, aes(x = period, y = RCA, color = cmdCode, group = cmdCode)) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(title = "RCA Over Time – HS07 Sector Products (0101–0105)",
+       x = "Year", y = "RCA") +
+  theme_bw()
+```
+
+Interesting that Mexico seems to have a general RCA of Live Animals, but there was a sharop decline starting in 1993. NAFTA was enacted January 1, 1994- was it a driving factor in RCA shift? What about data from future years?
+
+# 02 Meat and Edible Meat offal
+
+```{r}
+## load the dataframes
+mx_xports_sector_02 <- read_csv("mx_xports_prod_i/mx_xports_sector_02.csv")
+world_xports_sector_02 <- read_csv("world_xports_prod_i/world_xports_sector_02.csv")
+
+# overwrite with necessary variables
+
+mx_xports_sector_02 <- necessary_variables(mx_xports_sector_02)
+world_xports_sector_02 <- necessary_variables(world_xports_sector_02)
+
+## calculate rca
+rca_sector_02 <- calculate_rca_generalized(mx_xports_sector_02, world_xports_sector_02, mx_xports_all, world_xports_all)
+
+```
+
+```{r}
+## graph RCA
+ggplot(rca_sector_02, aes(x = period, y = RCA, color = cmdCode, group = cmdCode)) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(title = "RCA Over Time – HS07 Sector Products (0201-0210)",
+       x = "Year", y = "RCA") +
+  theme_bw()
+```
+
+Sector of 02 seems to not have much of a comparative advantage in Mexico.
+
+# 04 Dairy Produce; Birds' eggs; Natural Honey; Edible products of animal origin
+
+04, 0401 -\> 0410 EXCLUDING HONEY 0409
+
+First, we load the dataframes necessary, and overwrite them with necessary variables
+
+```{r}
+mx_xports_sector_04 <- read_csv("mx_xports_prod_i/mx_xports_sector_04.csv")
+
+world_xports_sector_04 <- read_csv("world_xports_prod_i/world_xports_sector_04.csv")
+
+mx_xports_sector_04 <- necessary_variables(mx_xports_sector_04)
+world_xports_sector_04 <- necessary_variables(world_xports_sector_04)
+```
+
+Calculate RCA and then graph
+
+```{r}
+rca_sector_04 <- calculate_rca_generalized(mx_xports_sector_04, world_xports_sector_04, mx_xports_all, world_xports_all)
+```
+
+```{r}
+ggplot(rca_sector_04, aes(x = period, y = RCA, color = cmdCode, group = cmdCode)) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(title = "RCA Over Time – HS07 Sector Products (0401-0410)",
+       x = "Year", y = "RCA") +
+  theme_bw()
+```
+
+# 05 0ther Animal Products
+
+ANIMAL ORIGINATED PRODUCTS; NOT ELSEWHERE SPECIFIED OR INCLUDED
+
+In this sector, I will avoid
+
+-   0501 Human hair; unworked, whether or not washed or scoured; waste of human hair
+
+-   0509 Sponges
+
+-   0511 Animal products not elsewhere specified or included; dead animals of chapter 1 or 3, unfit for human consumption
+
+```{r}
+mx_xports_sector_05 <- read_csv("mx_xports_prod_i/mx_xports_sector_05.csv")
+
+world_xports_sector_05 <- read_csv("world_xports_prod_i/world_xports_sector_05.csv")
+
+mx_xports_sector_05 <- necessary_variables(mx_xports_sector_05)
+world_xports_sector_05 <- necessary_variables(world_xports_sector_05)
+```
+
+Calculate RCA and then graph
+
+```{r}
+rca_sector_05 <- calculate_rca_generalized(mx_xports_sector_05, world_xports_sector_05, mx_xports_all, world_xports_all)
+```
+
+```{r}
+ggplot(rca_sector_05, aes(x = period, y = RCA, color = cmdCode, group = cmdCode)) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(title = "RCA Over Time – HS07 Sector Products (05)",
+       x = "Year", y = "RCA") +
+  theme_bw()
+```
+
+Interestingly, 0503 "Horsehair, waste" has a comparative advantage in that product, but the sector does not have a comparative advantage.
+
+# 07- Vegetables and Certain Roots and Tubes; Edible
+
+```{r  load datasets for product 07}
+# read the datasets in each folder
+
+#mexico exports of 07 VEGETABLES AND CERTAIN ROOTS AND TUBERS; EDIBLE time 1992 -> 2000
+mx_xports_07 <- read_csv("mx_xports_prod_i/mx_xports_07.csv")
+
+world_xports_07 <- read_csv("world_xports_prod_i/world_xports_07.csv")
+```
+
+```{r, overwrite the df with clean df}
+mx_xports_07 <- necessary_variables(mx_xports_07)
+mx_xports_all <- necessary_variables(mx_xports_all)
+world_xports_07 <- necessary_variables(world_xports_07)
+world_xports_all <- necessary_variables(world_xports_all)
+```
+
+```{r, apply RCA analysis to dataframes}
+## apply to datafranes
+
+mx_rca_07_1992_2000 <- calculate_rca(
+  mx_xports_07, 
+  mx_xports_all, 
+  world_xports_07, 
+  world_xports_all)
+
+```
+
+```{r visualize RCA over time}
+ggplot(mx_rca_07_1992_2000, aes(x = period, y = RCA)) +
+  geom_line(color = "darkgreen", size = 1.2) +
+  geom_hline(yintercept = -1, linetype = "dashed", color = "red") +
+  labs(
+    title = "Mexico's RCA in Product 07 (Vegetables and Tubers)",
+    x = "Year",
+    y = "RCA Index"
+  ) +
+  theme_bw()
+
+```
+
+## Sector Analysis : 07
+
+Now, I are tasked to clean the dataset and calculate an RCA given the dataset with the entire sector. Using the code above, find a way to generalize the RCA calculation to continue the calculation, with an ultimate goal of showing an RCA graph for each product in the sector.
+
+```{r}
+# read the dataframe of the 07 sector contaning country MX exports of product 0701, 0702, 0703, 0704, 0705, 0706, 0707, 0708, 0709, 0710
+
+#mexico exports of products 0701 to 0710 and time 1992 -> 2000
+
+mx_xports_sector_07 <- read_csv("mx_xports_prod_i/mx_xports_sector_07.csv")
+```
+
+Now, I must use the necessary variables for the RCA. necessary variables are the following: period, reporterISO, cmdCode, flowCode, qty, netWgt, fobvalue, primaryValue. Recall that the RCA variable is calculated with the following:
+
+RCA = \[(Country Exports of Product i / Country A Exports of ALL products) / (World Exports of product i / World Exports of all products)\]
+
+$\text{RCA}_i = \frac{\dfrac{X_{A,i}}{X_{A,\text{all}}}} {\dfrac{X_{World,i}}{X_{World,\text{all}}}}$
+
+The RCA variable calculates a share of country exports a product over the world exports of said product. If the RCA variable is greater than, or equal to 1, then the country has a revealed comparative advantage in producing said good. According to neoclassical theory, gains from trade are still probable in comparative advantage. Theory says to export goods in which the country has a comparative advantage in producing.
+
+```{r}
+mx_xports_sector_07 <- necessary_variables(mx_xports_sector_07)
+```
+
+Now, I have the necessary variables, Country MX Exports of product 0701 -\> 0710. I have the data of Mexico's exports of all products, titled `mx_xports_all`. Now, I need World's exports of products 0701 -\> 0710. I can do this by using UNCOMTRADE data as Ill. Repeating the same steps, I will grab the necessary variables.
+
+```{r}
+#load the dataframe of world exports of prod 0701 -> 0710
+world_xports_sector_07 <- read_csv("world_xports_prod_i/world_xports_sector_07.csv")
+
+#grab necessary variables.
+world_xports_sector_07 <- necessary_variables(world_xports_sector_07)
+```
+
+I now have World exports of product 0701 -\> 0710 with the same time period of 1992 to 2000. Recall I have datasets of Mexico's exports of all products titled `mx_xports_all` with variables period, reporterISO, cmdCode, flowCode, qty, netWgt, fobvalue, primaryValue. I also have `world_xports_all` which contains world exports of all products with variables period, reporterISO, cmdCode, flowCode, qty, netWgt, fobvalue, primaryValue. HoIver, notice that `world_xports_sector_07` and `mx_xports_sector_07` have the cmdCode, hoIver, they are not aggregated, and their cmdCode varies from 0701 -\> 0710. Below is an attempted geenralized calclation of RCA, with a clear difference of grouping by `group_by(period, cmdCode)` due to the nature of the dataframe with varying cmdCode
+
+Let's test this in action to see if it works!
+
+RCA of sector 0701 to 0710.
+
+```{r}
+# inputs need: country_sector_df, world_sector_df, country_all_df, world_all_df
+
+# have: mx_xports_sector_07, world_xports_sector_07, mx_xports_all, world_xports_all
+
+rca_sector_07 <- calculate_rca_generalized(mx_xports_sector_07, world_xports_sector_07,mx_xports_all, world_xports_all)
+```
+
+Visualize over time:
+
+```{r}
+## ggplot to bisualize over time
+ggplot(rca_sector_07, aes(x = period, y = RCA, color = cmdCode, group = cmdCode)) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(title = "RCA Over Time – HS07 Sector Products (0701–0710)",
+       x = "Year", y = "RCA") +
+  theme_bw()
+```
+
+I can now develop code to show which products have an RCA \> 1 and RCA \< 1.
+
+I can do this by running a simple filter:
+
+```{r}
+## show which years had an RCA > 1
+table_RCA_gt1 <- rca_sector_07 |>
+  filter(RCA > 1) |>
+  arrange(period, cmdCode)
+table_RCA_gt1
+```
+
+or by showing which years had an RCA \> 1
+
+```{r}
+#summarize the comparative advantage by product by grouping by product code
+summary_CA_by_product <- rca_sector_07 |>
+  group_by(cmdCode) |>
+  summarise(
+    years_with_CA = paste(period[RCA > 1], collapse = ", "),
+    n_years_CA = sum(RCA > 1),
+    total_years = n(),
+    share_years_CA = n_years_CA / total_years
+  )
+```
+
+and a publication ready table:
+
+```{r}
+summary_CA_by_product |> 
+  gt() |>
+  tab_header(
+    title = "Mexico’s RCA, Sector 07 (RCA > 1)",
+  )
+```
+
+I can fix this dataframe by changing the name of the previous one
+
+# Sector definitions
+
+### 07 - VEGETABLES AND CERTAIN ROOTS AND TUBERS; EDIBLE
+
+-   0701 - Potatoes; fresh or chilled
+
+-   0702 - Tomatoes; fresh or chilled
+
+-   0703 - Onions, shallots, garlic, leeks and other alliaceous vegetables; fresh or chilled
+
+-   0704 - Cabbages, caulifloIrs, kohlrabi, kale and similar edible brassicas; fresh or chilled
+
+-   0705 - Lettuce (lactuca sativa) and chicory (cichorium spp.) fresh or chilled
+
+-   0706 - Carrots, turnips, salad beetroot, salsify, celeriac, radishes and similar edible roots; fresh or chilled
+
+-   0707 - Cucumbers and gherkins; fresh or chilled
+
+-   0708 - Leguminous vegetables; shelled or unshelled, fresh or chilled
+
+-   0709 - Vegetables; n.e.c. in chapter 07, fresh or chilled
+
+-   0710 - Vegetables (uncooked or cooked by steaming or boiling in water); frozen
+
+-   0711 - Vegetables provisionally preserved; (e.g. by sulphur dioxide gas, in brine, in sulphur water or in other preservative solutions), but unsuitable in that state for immediate consumption
+
+-   0712 - Vegetables, dried; whole, cut, sliced, broken or in powder, but not further prepared
+
+-   0713 - Vegetables, leguminous; shelled, whether or not skinned or split, dried
+
+-   p
+
+# Miscellaneous
+
+```{r}
+##GENERALIZED RCA ANALYSIS
+
+## Generalized RCA function for any product code
+#calculate_rca_for_product <- function(product_code) {
+  
+  #  build file paths for  product
+ # mx_prod_path <- paste0("mx_xports_prod_i/mx_xports_", product_code, ".csv")
+ # world_prod_path <- paste0("world_xports_prod_i/world_xports_", product_code, ".csv")
+  
+  # load and read the  data
+  #mx_xports_prod <- read_csv(mx_prod_path, show_col_types = FALSE)
+ # world_xports_prod <- read_csv(world_prod_path, show_col_types = FALSE)
+  
+  # laod world totals for time frame 
+  #mx_xports_all <- read_csv("mx_total_xports_world/mx_xports_all.csv", show_col_types = FALSE)
+  #world_xports_all <- read_csv("world_total_xports/world_xports_all.csv", show_col_types = FALSE)
+  
+  # clean and arrange using  necessary_varioables function
+#  mx_xports_prod <- necessary_variables(mx_xports_prod)
+#  world_xports_prod <- necessary_variables(world_xports_prod)
+#  mx_xports_all <- necessary_variables(mx_xports_all)
+#  world_xports_all <- necessary_variables(world_xports_all)
+  
+  # calculate RCA
+#  rca_df <- mx_xports_prod %>%
+ #   inner_join(mx_xports_all, by = "period", suffix = c("_prod", "_total")) %>%
+#    inner_join(world_xports_prod, by = "period") %>%
+ #   inner_join(world_xports_all, by = "period", suffix = c("_world_prod", "_world_total")) %>%
+ #   mutate(
+   #   RCA = (fobvalue_prod / fobvalue_total) /
+  #          (fobvalue_world_prod / fobvalue_world_total)
+ #   ) %>%
+  #  select(period, RCA) %>%
+ #   mutate(product_code = product_code)
+  
+ # return(rca_df)
+#}
+```
