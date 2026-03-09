@@ -20,6 +20,8 @@ library(dplyr) # for data wrangling
 library(janitor) # for cleaning messy names of datasets
 library(readr) # for reading files
 library(gt) # for making 'publication ready' tables
+library(usethis) #enables git pushing to put on github
+library(gitcreds)
 ```
 
 This senior project document will serve as the backbone of methodology and analysis part of the Senior Project"
@@ -443,6 +445,8 @@ I can fix this dataframe by changing the name of the previous one
 -   0713 - Vegetables, leguminous; shelled, whether or not skinned or split, dried
 
 -   p
+
+Today Kash helped me tremendously setting up git hub for the first time ever!!
 
 # Miscellaneous
 
