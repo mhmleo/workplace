@@ -448,6 +448,59 @@ I can fix this dataframe by changing the name of the previous one
 
 Today Kash helped me tremendously setting up git hub for the first time ever!!
 
+# 08- FRUIT AND NUTS, EDIBLE; PEEL OF CITRUS FRUIT OR MELONS
+
+
+
+We omit the following:
+
+- 0812	Fruit and nuts provisionally preserved; e.g. by sulphur dioxide gas, brine, in sulphur water or in other preservative solutions, but unsuitable in that state for immediate consumption
+
+- 	0813 Fruit, dried, other than that of heading no. 0801 to 0806; mixtures of nuts or dried fruits of this chapter
+
+- 0814	Peel of citrus fruit or melons (including watermelons); fresh, frozen dried or provisionally preserved in brine, in sulphur water or in other preservative solutions
+
+```{r}
+mx_xports_sector_08 <- read_csv("mx_xports_prod_i/mx_xports_sector_08.csv")
+
+world_xports_sector_08 <- read_csv("world_xports_prod_i/world_xports_sector_08.csv")
+
+mx_xports_sector_05 <- necessary_variables(mx_xports_sector_08)
+world_xports_sector_05 <- necessary_variables(world_xports_sector_08)
+```
+
+
+RCA of sector 0801 to 0810.
+
+```{r}
+# inputs need: country_sector_df, world_sector_df, country_all_df, world_all_df
+
+# have: mx_xports_sector_07, world_xports_sector_07, mx_xports_all, world_xports_all
+
+rca_sector_08 <- calculate_rca_generalized(mx_xports_sector_08, world_xports_sector_08,mx_xports_all, world_xports_all)
+```
+
+Plot sector 08
+
+Visualize over time:
+
+```{r}
+## ggplot to bisualize over time
+ggplot(rca_sector_08, aes(x = period, y = RCA, color = cmdCode, group = cmdCode)) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(title = "RCA Over Time – HS08 Sector Products (0801–0810)",
+       x = "Year", y = "RCA") +
+  theme_bw()
+```
+# 09-
+
+# 10
+
+# 11
+
+
+
 # Miscellaneous
 
 ```{r}
