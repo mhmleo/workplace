@@ -757,7 +757,7 @@ Visualize over time:
 ggplot(rca_sector_13, aes(x = period, y = RCA, color = as.factor(cmdCode), group = cmdCode)) +
   geom_line(size = 0.8) +
   geom_hline(yintercept = 1, linetype = "dashed") +
-  labs(title = "RCA Over Time – HS12 Sector Products (12)",
+  labs(title = "RCA Over Time – HS13 Sector Products (13)",
        x = "Year", y = "RCA") +
   theme_bw()
 ```
@@ -796,7 +796,7 @@ Visualize over time:
 ggplot(rca_sector_14, aes(x = period, y = RCA, color = as.factor(cmdCode), group = cmdCode)) +
   geom_line(size = 0.8) +
   geom_hline(yintercept = 1, linetype = "dashed") +
-  labs(title = "RCA Over Time – HS12 Sector Products (12)",
+  labs(title = "RCA Over Time – HS14 Sector Products (14)",
        x = "Year", y = "RCA") +
   theme_bw()
 ```
@@ -804,13 +804,173 @@ ggplot(rca_sector_14, aes(x = period, y = RCA, color = as.factor(cmdCode), group
 
 # 15 Animal and vegetable oils and fats; refined edible oils and fats
 
+We Omit the following:
+
+- 1503
+
+- 1505
+ 
+- 1506
+
+- -1508
+
+- 1510
+
+- 1511 to 1514
+
+- 1517 to 1519
+
+
+```{r}
+mx_xports_sector_15 <- read_csv("mx_xports_prod_i/mx_xports_sector_15.csv")
+
+world_xports_sector_15 <- read_csv("world_xports_prod_i/world_xports_sector_15.csv")
+
+mx_xports_sector_15 <- necessary_variables(mx_xports_sector_15)
+world_xports_sector_15 <- necessary_variables(world_xports_sector_15)
+
+```
+
+
+RCA Sector 15
+
+```{r}
+# inputs need: country_sector_df, world_sector_df, country_all_df, world_all_df
+
+# have: mx_xports_sector_10, world_xports_sector_10, mx_xports_all, world_xports_all
+
+rca_sector_15 <- calculate_rca_generalized(mx_xports_sector_15, world_xports_sector_15,mx_xports_all, world_xports_all)
+```
+
+
+Plot sector 15
+
+Visualize over time:
+
+```{r}
+## ggplot to bisualize over time
+ggplot(rca_sector_15, aes(x = period, y = RCA, color = as.factor(cmdCode), group = cmdCode)) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(title = "RCA Over Time – HS15 Sector Products (15)",
+       x = "Year", y = "RCA") +
+  theme_bw()
+```
+
 
 # 16 Meat, fish and other aquatic invertebrate products
 
 
+RCA Sector 16
+
+```{r}
+mx_xports_sector_16 <- read_csv("mx_xports_prod_i/mx_xports_sector_16.csv")
+
+world_xports_sector_16 <- read_csv("world_xports_prod_i/world_xports_sector_16.csv")
+
+mx_xports_sector_16 <- necessary_variables(mx_xports_sector_16)
+world_xports_sector_16 <- necessary_variables(world_xports_sector_16)
+
+```
+
+
+```{r}
+# inputs need: country_sector_df, world_sector_df, country_all_df, world_all_df
+
+# have: mx_xports_sector_10, world_xports_sector_10, mx_xports_all, world_xports_all
+
+rca_sector_16 <- calculate_rca_generalized(mx_xports_sector_16, world_xports_sector_16,mx_xports_all, world_xports_all)
+```
+
+
+Plot sector 16
+
+Visualize over time:
+
+```{r}
+## ggplot to bisualize over time
+ggplot(rca_sector_16, aes(x = period, y = RCA, color = as.factor(cmdCode), group = cmdCode)) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(title = "RCA Over Time – HS16 Sector Products (16)",
+       x = "Year", y = "RCA") +
+  theme_bw()
+```
+
 # 17 Sugar and confectionery
+RCA Sector 17
+
+```{r}
+mx_xports_sector_17 <- read_csv("mx_xports_prod_i/mx_xports_sector_17.csv")
+
+world_xports_sector_17<- read_csv("world_xports_prod_i/world_xports_sector_17.csv")
+
+mx_xports_sector_17 <- necessary_variables(mx_xports_sector_17)
+world_xports_sector_17 <- necessary_variables(world_xports_sector_17)
+
+```
+
+
+```{r}
+# inputs need: country_sector_df, world_sector_df, country_all_df, world_all_df
+
+# have: mx_xports_sector_10, world_xports_sector_10, mx_xports_all, world_xports_all
+
+rca_sector_17 <- calculate_rca_generalized(mx_xports_sector_17, world_xports_sector_17,mx_xports_all, world_xports_all)
+```
+
+
+Plot sector 16
+
+Visualize over time:
+
+```{r}
+## ggplot to bisualize over time
+ggplot(rca_sector_17, aes(x = period, y = RCA, color = as.factor(cmdCode), group = cmdCode)) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(title = "RCA Over Time – HS167Sector Products (17)",
+       x = "Year", y = "RCA") +
+  theme_bw()
+```
+
 
 # 18 Cocoa and cocoa products
+RCA Sector 18
+
+```{r}
+mx_xports_sector_18 <- read_csv("mx_xports_prod_i/mx_xports_sector_18.csv")
+
+world_xports_sector_18 <- read_csv("world_xports_prod_i/world_xports_sector_18.csv")
+
+mx_xports_sector_18 <- necessary_variables(mx_xports_sector_18)
+world_xports_sector_18 <- necessary_variables(world_xports_sector_18)
+
+```
+
+
+```{r}
+# inputs need: country_sector_df, world_sector_df, country_all_df, world_all_df
+
+# have: mx_xports_sector_10, world_xports_sector_10, mx_xports_all, world_xports_all
+
+rca_sector_18 <- calculate_rca_generalized(mx_xports_sector_18, world_xports_sector_18,mx_xports_all, world_xports_all)
+```
+
+
+Plot sector 18
+
+Visualize over time:
+
+```{r}
+## ggplot to bisualize over time
+ggplot(rca_sector_18, aes(x = period, y = RCA, color = as.factor(cmdCode), group = cmdCode)) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(title = "RCA Over Time – HS18 Sector Products (18 )",
+       x = "Year", y = "RCA") +
+  theme_bw()
+```
 
 # 19 Cereal flour, starch, etc. or dairy products; cakes
 
