@@ -22,6 +22,7 @@ library(readr) # for reading files
 library(gt) # for making 'publication ready' tables
 library(usethis) #enables git pushing to put on github
 library(gitcreds)
+library(purrr) # this package is to loop and automate this entire process, instead of going through each sector 01 to 99
 ```
 
 This senior project document will serve as the backbone of methodology and analysis part of the Senior Project"
@@ -51,6 +52,7 @@ The section below describes the functions which are necessary in computing this 
 
 necessary_variables <- function(df) { # inputs a dataframe
   df |> 
+    dplyr::mutate(cmdCode = as.character(cmdCode)) |>
     arrange(period) |> #arranges the df by year
     select(period, reporterISO, cmdCode, flowCode, qty, netWgt, fobvalue, primaryValue) #selects the variables necessary for RCA
 }
@@ -88,7 +90,7 @@ calculate_rca_generalized <- function(country_sector_df,
                                       country_all_df,
                                       world_all_df) {
   
-  #first, I aggregate by year and product, with variables period, and cmdCode
+  #first, I aggregate by year and product, with variables period, and cmdCode, removing any na's
   country_prod <- country_sector_df |>
     group_by(period, cmdCode) |>
     summarise(country_product_value = sum(fobvalue, na.rm = TRUE), .groups = "drop")
@@ -122,6 +124,10 @@ calculate_rca_generalized <- function(country_sector_df,
 }
 ```
 
+
+
+
+
 # Necessary Dataframes
 
 ```{r}
@@ -140,7 +146,53 @@ mx_xports_all <- necessary_variables(mx_xports_all) # dataframe for all of mexic
 world_xports_all <- necessary_variables(world_xports_all) # dataframe for world exports of all products
 ```
 
-We need the dataframes above in order to complete the rest of the RCA Analysis. They are imperative in order so that the RCA variable can be calculated at a snaoshto in time, and
+We need the dataframes above in order to complete the rest of the RCA Analysis. They are imperative in order so that the RCA variable can be calculated at a snapshot in time.
+
+# Loop Initiation
+
+```{r, create sector codes}
+## create sector codes
+
+# sector_codes <- seq(1:99) #creates a list of integers from 1 to 99
+
+# sector_codes <- sprintf("%02d", 1:99) # since it is stored as 01..99 this adds a 01 for all int 1 ... 9. then goes 10,11,12..99
+
+#in this instance, I will manually add the codes, as I will not be analyzing all sectors. The analysis can be extened to loop.
+
+sector_codes <- c("01", "02", "04", "05","07","08","09","10","11") 
+```
+
+
+# process 1 Sector
+
+```{r, process sector}
+process_sector <- function(sector) { ## sector in this instance is HS classification code
+  
+  mx_file <- paste0("mx_xports_prod_i/mx_xports_sector_", sector, ".csv") ## paste0 is used to concatenate the files with path "mx_xports_prod_i/mx_xports_sector_"
+  world_file <- paste0("world_xports_prod_i/world_xports_sector_", sector, ".csv") ## similarly to above
+  
+  # skip sector if files do not exist, if file does not exist in mx_file or file does not exist in world file, skip
+  if (!file.exists(mx_file) | !file.exists(world_file)) {
+    message("Skipping sector ", sector)
+    return(NULL)
+  }
+  
+  mx_sector <- read_csv(mx_file, show_col_types = FALSE) |> necessary_variables()
+  world_sector <- read_csv(world_file, show_col_types = FALSE) |> necessary_variables()
+  
+  rca_sector <- calculate_rca_generalized(
+    mx_sector,
+    world_sector,
+    mx_xports_all,
+    world_xports_all
+  )
+  
+  rca_sector$sector <- sector
+  
+  return(rca_sector)
+}
+```
+
 
 # 01 Animals; Live
 
@@ -444,12 +496,11 @@ I can fix this dataframe by changing the name of the previous one
 
 -   0713 - Vegetables, leguminous; shelled, whether or not skinned or split, dried
 
--   p
+- 
 
 Today Kash helped me tremendously setting up git hub for the first time ever!!
 
 # 08- FRUIT AND NUTS, EDIBLE; PEEL OF CITRUS FRUIT OR MELONS
-
 
 
 We omit the following:
@@ -493,15 +544,298 @@ ggplot(rca_sector_08, aes(x = period, y = RCA, color = cmdCode, group = cmdCode)
        x = "Year", y = "RCA") +
   theme_bw()
 ```
-# 09-
-
-# 10
-
-# 11
 
 
+# 09- COFFEE, TEA, MATE AND SPICES
 
-# Miscellaneous
+No 4 digit HS classification code is omitted.
+
+```{r}
+mx_xports_sector_09 <- read_csv("mx_xports_prod_i/mx_xports_sector_09.csv")
+
+world_xports_sector_09 <- read_csv("world_xports_prod_i/world_xports_sector_09.csv")
+
+mx_xports_sector_09 <- necessary_variables(mx_xports_sector_09)
+world_xports_sector_09 <- necessary_variables(world_xports_sector_09)
+```
+
+
+RCA of sector 0901 to 0910.
+
+```{r}
+# inputs need: country_sector_df, world_sector_df, country_all_df, world_all_df
+
+# have: mx_xports_sector_07, world_xports_sector_07, mx_xports_all, world_xports_all
+
+rca_sector_09 <- calculate_rca_generalized(mx_xports_sector_09, world_xports_sector_09,mx_xports_all, world_xports_all)
+```
+
+Plot sector 09
+
+Visualize over time:
+
+```{r}
+## ggplot to bisualize over time
+ggplot(rca_sector_09, aes(x = period, y = RCA, color = cmdCode, group = cmdCode)) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(title = "RCA Over Time – HS09 Sector Products (0901–0910)",
+       x = "Year", y = "RCA") +
+  theme_bw()
+```
+
+
+
+# 10 CEREALS (needs fix, ask Prof. Valerie)
+
+No 4 digit HS classification code is omitted.
+
+```{r}
+mx_xports_sector_10 <- read_csv("mx_xports_prod_i/mx_xports_sector_10.csv")
+
+world_xports_sector_10 <- read_csv("world_xports_prod_i/world_xports_sector_10.csv")
+
+mx_xports_sector_10 <- necessary_variables(mx_xports_sector_10)
+world_xports_sector_10 <- necessary_variables(world_xports_sector_10)
+```
+
+
+RCA of sector 1001 to 1008
+
+```{r}
+# inputs need: country_sector_df, world_sector_df, country_all_df, world_all_df
+
+# have: mx_xports_sector_10, world_xports_sector_10, mx_xports_all, world_xports_all
+
+rca_sector_10 <- calculate_rca_generalized(mx_xports_sector_10, world_xports_sector_10,mx_xports_all, world_xports_all)
+```
+
+Plot sector 10
+
+Visualize over time:
+
+```{r}
+## ggplot to bisualize over time
+ggplot(rca_sector_10, aes(x = period, y = RCA, color = as.factor(cmdCode), group = cmdCode)) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(title = "RCA Over Time – HS10 Sector Products (1001–1010)",
+       x = "Year", y = "RCA") +
+  theme_bw()
+```
+
+
+
+
+# 11  Milling products; malt; starch, etc.; gluten 
+
+No 4 digit HS classification code is omitted.
+
+```{r}
+mx_xports_sector_11 <- read_csv("mx_xports_prod_i/mx_xports_sector_11.csv")
+
+world_xports_sector_11 <- read_csv("world_xports_prod_i/world_xports_sector_11.csv")
+
+mx_xports_sector_11 <- necessary_variables(mx_xports_sector_11)
+world_xports_sector_11 <- necessary_variables(world_xports_sector_11)
+```
+
+
+RCA of sector 1101 to 1109
+
+```{r}
+# inputs need: country_sector_df, world_sector_df, country_all_df, world_all_df
+
+# have: mx_xports_sector_10, world_xports_sector_10, mx_xports_all, world_xports_all
+
+rca_sector_11 <- calculate_rca_generalized(mx_xports_sector_11, world_xports_sector_11,mx_xports_all, world_xports_all)
+```
+
+Plot sector 11
+
+Visualize over time:
+
+```{r}
+## ggplot to bisualize over time
+ggplot(rca_sector_11, aes(x = period, y = RCA, color = as.factor(cmdCode), group = cmdCode)) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(title = "RCA Over Time – HS11 Sector Products (1101–1109)",
+       x = "Year", y = "RCA") +
+  theme_bw()
+```
+
+
+
+# 12 Oilseeds; kernels; industrial medicinal plants; feed
+
+We omit the following HS Codes:
+
+- 1205 Rape or colza seeds; whether or not broken
+
+- 1211 Plants and parts of plants (including seeds and fruits), of a kind used primarily in perfumery, in pharmacy or for insecticidal, fungicidal or similar purposes, fresh, chilled, frozen or dried, whether or not cut, crushed or powdered
+
+- 1212 Locust beans, seaweeds and other algae, sugar beet, sugar cane, fresh, chilled, frozen or dried, whether or not ground; fruit stones, kernels and other vegetable products (including unroasted chicory roots) used primarily for human consumption, n.e.c.
+
+- 1214 Swedes, mangolds, fodder roots, hay, lucerne (alfalfa), clover, sainfoin, forage kale, lupines, vetches and similar forage products, whether or not in the form of pellets
+
+No 4 digit HS classification code is omitted.
+
+```{r}
+mx_xports_sector_12 <- read_csv("mx_xports_prod_i/mx_xports_sector_12.csv")
+
+world_xports_sector_12 <- read_csv("world_xports_prod_i/world_xports_sector_12.csv")
+
+mx_xports_sector_12 <- necessary_variables(mx_xports_sector_12)
+world_xports_sector_12 <- necessary_variables(world_xports_sector_12)
+
+mx_xports_sector_12 <- mx_xports_sector_12 %>%
+  mutate(fobvalue = as.numeric(as.character(fobvalue)))
+
+world_xports_sector_12 <- world_xports_sector_12 %>%
+  mutate(fobvalue = as.numeric(as.character(fobvalue)))
+
+```
+
+
+RCA of sector 12
+
+```{r}
+# inputs need: country_sector_df, world_sector_df, country_all_df, world_all_df
+
+# have: mx_xports_sector_10, world_xports_sector_10, mx_xports_all, world_xports_all
+
+rca_sector_12 <- calculate_rca_generalized(mx_xports_sector_12, world_xports_sector_12,mx_xports_all, world_xports_all)
+```
+
+Plot sector 12
+
+Visualize over time:
+
+```{r}
+## ggplot to bisualize over time
+ggplot(rca_sector_12, aes(x = period, y = RCA, color = as.factor(cmdCode), group = cmdCode)) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(title = "RCA Over Time – HS12 Sector Products (12)",
+       x = "Year", y = "RCA") +
+  theme_bw()
+```
+
+
+
+# 13 Shellac; gum, fat and other plant liquids, juice
+
+```{r}
+mx_xports_sector_13 <- read_csv("mx_xports_prod_i/mx_xports_sector_13.csv")
+
+world_xports_sector_13 <- read_csv("world_xports_prod_i/world_xports_sector_13.csv")
+
+mx_xports_sector_13 <- necessary_variables(mx_xports_sector_13)
+world_xports_sector_13 <- necessary_variables(world_xports_sector_13)
+
+```
+
+
+RCA Sector 13
+
+```{r}
+# inputs need: country_sector_df, world_sector_df, country_all_df, world_all_df
+
+# have: mx_xports_sector_10, world_xports_sector_10, mx_xports_all, world_xports_all
+
+rca_sector_13 <- calculate_rca_generalized(mx_xports_sector_13, world_xports_sector_13,mx_xports_all, world_xports_all)
+```
+
+
+Plot sector 13
+
+Visualize over time:
+
+```{r}
+## ggplot to bisualize over time
+ggplot(rca_sector_13, aes(x = period, y = RCA, color = as.factor(cmdCode), group = cmdCode)) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(title = "RCA Over Time – HS12 Sector Products (12)",
+       x = "Year", y = "RCA") +
+  theme_bw()
+```
+
+# 14 Planting materials for planting; other plant products
+
+
+```{r}
+mx_xports_sector_14 <- read_csv("mx_xports_prod_i/mx_xports_sector_14.csv")
+
+world_xports_sector_14 <- read_csv("world_xports_prod_i/world_xports_sector_14.csv")
+
+mx_xports_sector_14 <- necessary_variables(mx_xports_sector_14)
+world_xports_sector_14 <- necessary_variables(world_xports_sector_14)
+
+```
+
+
+RCA Sector 14
+
+```{r}
+# inputs need: country_sector_df, world_sector_df, country_all_df, world_all_df
+
+# have: mx_xports_sector_10, world_xports_sector_10, mx_xports_all, world_xports_all
+
+rca_sector_14 <- calculate_rca_generalized(mx_xports_sector_14, world_xports_sector_14,mx_xports_all, world_xports_all)
+```
+
+
+Plot sector 14
+
+Visualize over time:
+
+```{r}
+## ggplot to bisualize over time
+ggplot(rca_sector_14, aes(x = period, y = RCA, color = as.factor(cmdCode), group = cmdCode)) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(title = "RCA Over Time – HS12 Sector Products (12)",
+       x = "Year", y = "RCA") +
+  theme_bw()
+```
+
+
+# 15 Animal and vegetable oils and fats; refined edible oils and fats
+
+
+# 16 Meat, fish and other aquatic invertebrate products
+
+
+# 17 Sugar and confectionery
+
+# 18 Cocoa and cocoa products
+
+# 19 Cereal flour, starch, etc. or dairy products; cakes
+
+# 20 Products of vegetables, fruits or other parts of plants
+
+# 21 Miscellaneous food
+
+# 22  Beverages, wine and vinegar
+
+# 23 Food industry residues and waste; formulated feed
+
+
+# 24 Tobacco, tobacco and tobacco substitute products
+
+# 50 Silk
+
+# 51 Wool and other animal hair
+
+# 52 Cotton
+
+# 53 Other plant fibers
+
+
+
+# Miscellaneous and Extra Code
 
 ```{r}
 ##GENERALIZED RCA ANALYSIS
@@ -542,3 +876,79 @@ ggplot(rca_sector_08, aes(x = period, y = RCA, color = cmdCode, group = cmdCode)
  # return(rca_df)
 #}
 ```
+
+# run RCA all sectors
+
+```{r}
+rca_all <- purrr::map_dfr(sector_codes, process_sector)
+
+## keep only first two digits
+
+rca_all <- rca_all |>
+  mutate(
+    cmdCode = as.character(cmdCode),
+    sector = substr(cmdCode, 1, 2)
+  )
+```
+
+
+# plot one sector (look at HS01 Animals: live for refernece)
+
+```{r}
+
+ggplot(
+  rca_all |> filter(sector == "01"), #filter for first sector
+  aes(x = period, y = RCA, color = cmdCode, group = cmdCode)
+) +
+  geom_line(size = 1) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(
+    title = "RCA for Sector HS01  (Live Animals)",
+    x = "Year",
+    y = "RCA",
+    color = "HS Product"
+  ) +
+  theme_minimal()
+```
+
+
+
+# plot all sectors at once
+```{r}
+ggplot(rca_all, aes(x = period, y = RCA)) +
+  geom_line(color = "steelblue") +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  facet_wrap(~cmdCode) +
+  theme_minimal() +
+  labs(
+    title = "RCA Over Time by Product",
+    x = "Year",
+    y = "RCA"
+  )
+```
+
+```{r}
+sectors <- unique(rca_all$sector) ## creatrs a list for all elements in sector_code MAKE SURE TO ADD EACH SECTOR CODE!
+
+
+for (s in sectors) { ## for all elements s in list sectors,
+  
+  allplots <- ggplot( 
+    rca_all |> filter(sector == s), ## filter for HS code loops
+    aes(x = period, y = RCA, color = cmdCode, group = cmdCode)
+  ) +
+    geom_line(size = 1) +
+    geom_hline(yintercept = 1, linetype = "dashed") +
+    labs(
+      title = paste("RCA for Sector", s),
+      x = "Year",
+      y = "RCA",
+      color = "HS Product"
+    ) +
+    theme_minimal()
+  
+  print(allplots)
+}
+```
+
+
