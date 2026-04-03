@@ -974,25 +974,432 @@ ggplot(rca_sector_18, aes(x = period, y = RCA, color = as.factor(cmdCode), group
 
 # 19 Cereal flour, starch, etc. or dairy products; cakes
 
+RCA Sector 19
+
+No HS Code is omitted
+
+
+```{r}
+mx_xports_sector_19 <- read_csv("mx_xports_prod_i/mx_xports_sector_19.csv")
+
+world_xports_sector_19 <- read_csv("world_xports_prod_i/world_xports_sector_19.csv")
+
+mx_xports_sector_19 <- necessary_variables(mx_xports_sector_19)
+world_xports_sector_19 <- necessary_variables(world_xports_sector_19)
+
+```
+
+
+```{r}
+# inputs need: country_sector_df, world_sector_df, country_all_df, world_all_df
+
+# have: mx_xports_sector_10, world_xports_sector_10, mx_xports_all, world_xports_all
+
+rca_sector_19 <- calculate_rca_generalized(mx_xports_sector_19, world_xports_sector_19,mx_xports_all, world_xports_all)
+```
+
+
+Plot sector 19
+
+Visualize over time:
+
+```{r}
+## ggplot to bisualize over time
+ggplot(rca_sector_19, aes(x = period, y = RCA, color = as.factor(cmdCode), group = cmdCode)) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(title = "RCA Over Time – HS19 Sector Products (19)",
+       x = "Year", y = "RCA") +
+  theme_bw()
+```
+
+
+
 # 20 Products of vegetables, fruits or other parts of plants
+
+RCA Sector 20
+
+No HS Code is omitted
+
+
+```{r}
+mx_xports_sector_20 <- read_csv("mx_xports_prod_i/mx_xports_sector_20.csv")
+
+world_xports_sector_20 <- read_csv("world_xports_prod_i/world_xports_sector_20.csv")
+
+mx_xports_sector_20 <- necessary_variables(mx_xports_sector_20)
+world_xports_sector_20 <- necessary_variables(world_xports_sector_20)
+
+```
+
+
+```{r}
+# inputs need: country_sector_df, world_sector_df, country_all_df, world_all_df
+
+# have: mx_xports_sector_10, world_xports_sector_10, mx_xports_all, world_xports_all
+
+rca_sector_20 <- calculate_rca_generalized(mx_xports_sector_20, world_xports_sector_20,mx_xports_all, world_xports_all)
+```
+
+
+Plot sector 20
+
+Visualize over time:
+
+```{r}
+## ggplot to bisualize over time
+ggplot(rca_sector_20, aes(x = period, y = RCA, color = as.factor(cmdCode), group = cmdCode)) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(title = "RCA Over Time – HS20 Sector Products (20)",
+       x = "Year", y = "RCA") +
+  theme_bw()
+```
+
 
 # 21 Miscellaneous food
 
+RCA Sector 21
+
+No HS Code is omitted
+
+
+```{r}
+mx_xports_sector_21 <- read_csv("mx_xports_prod_i/mx_xports_sector_21.csv")
+
+world_xports_sector_21 <- read_csv("world_xports_prod_i/world_xports_sector_21.csv")
+
+mx_xports_sector_21 <- necessary_variables(mx_xports_sector_21)
+world_xports_sector_21 <- necessary_variables(world_xports_sector_21)
+
+```
+
+
+```{r}
+# inputs need: country_sector_df, world_sector_df, country_all_df, world_all_df
+
+# have: mx_xports_sector_10, world_xports_sector_10, mx_xports_all, world_xports_all
+
+rca_sector_21 <- calculate_rca_generalized(mx_xports_sector_21, world_xports_sector_21,mx_xports_all, world_xports_all)
+```
+
+
+Plot sector 21
+
+Visualize over time:
+
+```{r}
+## ggplot to bisualize over time
+ggplot(rca_sector_21, aes(x = period, y = RCA, color = as.factor(cmdCode), group = cmdCode)) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(title = "RCA Over Time – HS21 Sector Products (21)",
+       x = "Year", y = "RCA") +
+  theme_bw()
+```
+
 # 22  Beverages, wine and vinegar
 
+RCA Sector 22
+
+No HS Code is omitted
+
+
+```{r}
+mx_xports_sector_22 <- read_csv("mx_xports_prod_i/mx_xports_sector_22.csv")
+
+world_xports_sector_22 <- read_csv("world_xports_prod_i/world_xports_sector_22.csv")
+
+mx_xports_sector_22 <- necessary_variables(mx_xports_sector_22)
+world_xports_sector_22 <- necessary_variables(world_xports_sector_22)
+
+```
+
+
+```{r}
+# inputs need: country_sector_df, world_sector_df, country_all_df, world_all_df
+
+# have: mx_xports_sector_10, world_xports_sector_10, mx_xports_all, world_xports_all
+
+rca_sector_22 <- calculate_rca_generalized(mx_xports_sector_22, world_xports_sector_22,mx_xports_all, world_xports_all)
+```
+
+
+Plot sector 22
+
+Visualize over time:
+
+```{r}
+## ggplot to bisualize over time
+ggplot(rca_sector_22, aes(x = period, y = RCA, color = as.factor(cmdCode), group = cmdCode)) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(title = "RCA Over Time – HS22 Sector Products (22)",
+       x = "Year", y = "RCA") +
+  theme_bw()
+```
+
+
+
 # 23 Food industry residues and waste; formulated feed
+
+RCA Sector 23
+
+No HS Code is omitted
+
+
+```{r}
+mx_xports_sector_23 <- read_csv("mx_xports_prod_i/mx_xports_sector_23.csv")
+
+world_xports_sector_23 <- read_csv("world_xports_prod_i/world_xports_sector_23.csv")
+
+mx_xports_sector_23 <- necessary_variables(mx_xports_sector_23)
+world_xports_sector_23 <- necessary_variables(world_xports_sector_23)
+
+```
+
+
+```{r}
+# inputs need: country_sector_df, world_sector_df, country_all_df, world_all_df
+
+# have: mx_xports_sector_10, world_xports_sector_10, mx_xports_all, world_xports_all
+
+rca_sector_23 <- calculate_rca_generalized(mx_xports_sector_23, world_xports_sector_23,mx_xports_all, world_xports_all)
+```
+
+
+Plot sector 23
+
+Visualize over time:
+
+```{r}
+## ggplot to bisualize over time
+ggplot(rca_sector_23, aes(x = period, y = RCA, color = as.factor(cmdCode), group = cmdCode)) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(title = "RCA Over Time – HS23 Sector Products (23)",
+       x = "Year", y = "RCA") +
+  theme_bw()
+```
+
 
 
 # 24 Tobacco, tobacco and tobacco substitute products
 
+RCA Sector 24
+
+No HS Code is omitted.
+
+
+```{r}
+mx_xports_sector_24 <- read_csv("mx_xports_prod_i/mx_xports_sector_24.csv")
+
+world_xports_sector_24 <- read_csv("world_xports_prod_i/world_xports_sector_24.csv")
+
+mx_xports_sector_24 <- necessary_variables(mx_xports_sector_24)
+world_xports_sector_24 <- necessary_variables(world_xports_sector_24)
+
+```
+
+
+```{r}
+# inputs need: country_sector_df, world_sector_df, country_all_df, world_all_df
+
+# have: mx_xports_sector_10, world_xports_sector_10, mx_xports_all, world_xports_all
+
+rca_sector_24 <- calculate_rca_generalized(mx_xports_sector_24, world_xports_sector_24,mx_xports_all, world_xports_all)
+```
+
+
+Plot sector 24
+
+Visualize over time:
+
+```{r}
+## ggplot to bisualize over time
+ggplot(rca_sector_24, aes(x = period, y = RCA, color = as.factor(cmdCode), group = cmdCode)) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(title = "RCA Over Time – HS24 Sector Products (24)",
+       x = "Year", y = "RCA") +
+  theme_bw()
+```
+
+
 # 50 Silk
+
+RCA Sector 50
+
+No HS Code is omitted
+
+
+```{r}
+mx_xports_sector_50 <- read_csv("mx_xports_prod_i/mx_xports_sector_50.csv")
+
+world_xports_sector_50 <- read_csv("world_xports_prod_i/world_xports_sector_50.csv")
+
+mx_xports_sector_50 <- necessary_variables(mx_xports_sector_50)
+world_xports_sector_50 <- necessary_variables(world_xports_sector_50)
+
+```
+
+
+```{r}
+# inputs need: country_sector_df, world_sector_df, country_all_df, world_all_df
+
+# have: mx_xports_sector_10, world_xports_sector_10, mx_xports_all, world_xports_all
+
+rca_sector_50 <- calculate_rca_generalized(mx_xports_sector_50, world_xports_sector_50,mx_xports_all, world_xports_all)
+```
+
+
+Plot sector 23
+
+Visualize over time:
+
+```{r}
+## ggplot to bisualize over time
+ggplot(rca_sector_50, aes(x = period, y = RCA, color = as.factor(cmdCode), group = cmdCode)) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(title = "RCA Over Time – HS50 Sector Products (50)",
+       x = "Year", y = "RCA") +
+  theme_bw()
+```
 
 # 51 Wool and other animal hair
 
+RCA Sector 51
+
+We omit the following HS Codes
+
+- 5103 Waste of wool or of fine or coarse animal hair, including yarn waste but excluding garnetted stock\
+
+- 5104 Wool, or fine or coarse animal hair; garnetted stock
+
+- 5113 Woven fabrics of coarse animal hair or of horsehair
+
+
+```{r}
+mx_xports_sector_51 <- read_csv("mx_xports_prod_i/mx_xports_sector_51.csv")
+
+world_xports_sector_51 <- read_csv("world_xports_prod_i/world_xports_sector_51.csv")
+
+mx_xports_sector_51 <- necessary_variables(mx_xports_sector_51)
+world_xports_sector_51 <- necessary_variables(world_xports_sector_51)
+
+```
+
+
+```{r}
+# inputs need: country_sector_df, world_sector_df, country_all_df, world_all_df
+
+# have: mx_xports_sector_10, world_xports_sector_10, mx_xports_all, world_xports_all
+
+rca_sector_51 <- calculate_rca_generalized(mx_xports_sector_51, world_xports_sector_51,mx_xports_all, world_xports_all)
+```
+
+
+Plot sector 51
+
+Visualize over time:
+
+```{r}
+## ggplot to bisualize over time
+ggplot(rca_sector_51, aes(x = period, y = RCA, color = as.factor(cmdCode), group = cmdCode)) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(title = "RCA Over Time – HS51 Sector Products (51)",
+       x = "Year", y = "RCA") +
+  theme_bw()
+```
+
 # 52 Cotton
+
+
+Omit
+
+- 5205 Cotton yarn (other than sewing thread), containing 85% or more by weight of cotton, not put up for retail sale
+
+- 5206 Cotton yarn (other than sewing thread), containing less than 85% by weight of cotton, not put up for retail sale
+
+
+```{r}
+mx_xports_sector_52 <- read_csv("mx_xports_prod_i/mx_xports_sector_52.csv")
+
+world_xports_sector_52 <- read_csv("world_xports_prod_i/world_xports_sector_52.csv")
+
+mx_xports_sector_52 <- necessary_variables(mx_xports_sector_52)
+world_xports_sector_52 <- necessary_variables(world_xports_sector_52)
+
+```
+
+
+```{r}
+# inputs need: country_sector_df, world_sector_df, country_all_df, world_all_df
+
+# have: mx_xports_sector_10, world_xports_sector_10, mx_xports_all, world_xports_all
+
+rca_sector_52 <- calculate_rca_generalized(mx_xports_sector_52, world_xports_sector_52,mx_xports_all, world_xports_all)
+```
+
+
+Plot sector 52
+
+Visualize over time:
+
+```{r}
+## ggplot to bisualize over time
+ggplot(rca_sector_52, aes(x = period, y = RCA, color = as.factor(cmdCode), group = cmdCode)) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(title = "RCA Over Time – HS52 Sector Products (52)",
+       x = "Year", y = "RCA") +
+  theme_bw()
+```
+
 
 # 53 Other plant fibers
 
+We omit the following:
+
+- 5310 Woven fabrics of jute, other textile bast fibres of heading no. 5303
+
+- 5311 Woven fabrics of other vegetable textile fibres; woven fabrics of paper yarn
+
+```{r}
+mx_xports_sector_53<- read_csv("mx_xports_prod_i/mx_xports_sector_53.csv")
+
+world_xports_sector_53 <- read_csv("world_xports_prod_i/world_xports_sector_53.csv")
+
+mx_xports_sector_53 <- necessary_variables(mx_xports_sector_53)
+world_xports_sector_53 <- necessary_variables(world_xports_sector_53)
+
+```
+
+
+```{r}
+# inputs need: country_sector_df, world_sector_df, country_all_df, world_all_df
+
+# have: mx_xports_sector_10, world_xports_sector_10, mx_xports_all, world_xports_all
+
+rca_sector_53 <- calculate_rca_generalized(mx_xports_sector_53, world_xports_sector_53,mx_xports_all, world_xports_all)
+```
+
+
+Plot sector 53
+
+Visualize over time:
+
+```{r}
+## ggplot to bisualize over time
+ggplot(rca_sector_53, aes(x = period, y = RCA, color = as.factor(cmdCode), group = cmdCode)) +
+  geom_line(size = 0.8) +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  labs(title = "RCA Over Time – HS53 Sector Products (53)",
+       x = "Year", y = "RCA") +
+  theme_bw()
+```
 
 
 # Miscellaneous and Extra Code
