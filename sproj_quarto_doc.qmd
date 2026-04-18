@@ -8,7 +8,7 @@ format:
 editor: visual
 ---
 
-# Load Packages
+# PACKAGES
 
 In order to do this Exploratory Data Analysis, I will use the following packages:
 
@@ -23,6 +23,8 @@ library(gt) # for making 'publication ready' tables
 library(usethis) #enables git pushing to put on github
 library(gitcreds)
 library(purrr) # this package is to loop and automate this entire process, instead of going through each sector 01 to 99
+library(fixest) #fixed fx
+library(broom)
 ```
 
 This senior project document will serve as the backbone of methodology and analysis part of the Senior Project"
@@ -82,7 +84,7 @@ calculate_rca <- function(country_product, country_total, world_product, world_t
 
 ```
 
-### Generalized RCA Function
+### generalized RCA Function
 
 ```{r}
 calculate_rca_generalized <- function(country_sector_df,
@@ -120,7 +122,7 @@ calculate_rca_generalized <- function(country_sector_df,
     ) |>
     arrange(period, cmdCode)
   
-  return(rca_df)
+  return(rca_df) #outputs a dataframe 
 }
 ```
 
@@ -148,22 +150,18 @@ world_xports_all <- necessary_variables(world_xports_all) # dataframe for world 
 
 We need the dataframes above in order to complete the rest of the RCA Analysis. They are imperative in order so that the RCA variable can be calculated at a snapshot in time.
 
-# Loop Initiation
+# Sector Codes
 
 ```{r, create sector codes}
 ## create sector codes
 
-# sector_codes <- seq(1:99) #creates a list of integers from 1 to 99
+# in this instance, I will manually add the codes, as I will not be analyzing all sectors. The analysis can be extened to loop.
 
-# sector_codes <- sprintf("%02d", 1:99) # since it is stored as 01..99 this adds a 01 for all int 1 ... 9. then goes 10,11,12..99
-
-#in this instance, I will manually add the codes, as I will not be analyzing all sectors. The analysis can be extened to loop.
-
-sector_codes <- c("01", "02", "04", "05","07","08","09","10","11") 
+sector_codes <- c("01", "02", "04", "05","07","08","09","10","11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "50", "51") 
 ```
 
 
-# process 1 Sector
+# Process Sectors 
 
 ```{r, process sector}
 process_sector <- function(sector) { ## sector in this instance is HS classification code
@@ -194,7 +192,281 @@ process_sector <- function(sector) { ## sector in this instance is HS classifica
 ```
 
 
-# 01 Animals; Live
+## Save all sectors in clean data folder
+
+```{r}
+dir.create("data/clean/rca_sectors", recursive = TRUE, showWarnings = FALSE) #creates a directory for a clean RCA
+
+rca_big_df <- purrr::map_dfr(sector_codes, function(s) {
+  result <- process_sector(s)
+  if (!is.null(result)) { #if the result is not null
+    write_csv(result, paste0("data/clean/rca_sectors/rca_sector_", s, ".csv")) # write the csv file in this path
+    message("Saved sector ", s) #write message to save sector
+  }
+  return(result)
+})
+
+# add a sector column, and then add NAFTA dummy variable
+rca_big_df <- rca_big_df |>
+  mutate(
+    cmdCode = as.character(cmdCode),
+    sector = substr(cmdCode, 1, 2), # substr(string, start, stop), in this case start at char 1 end char 2.
+    post_nafta = if_else(period >= 1994, 1, 0), # 1 for post nafta, 0 otherwise
+    nafta_phase = case_when(
+      period < 1994 ~ "pre", # period < 1994 make it pre
+      period >= 1994 & period <= 2000 ~ "early", # period thru 1994 and 2000 titled early
+      period > 2000 ~ "mature" #pweiod > 2000 titled after
+  )
+  )
+```
+
+# Loard Variables for Regression
+
+```{r}
+# load exchange rate dataset and tidy up
+exch_rate <- read_csv("regression/variables/exch_rate.csv")
+
+exch_rate <- exch_rate |>
+  select(Period, exch_rate) |>
+  rename(period = "Period")
+
+# load dataset for fdi inflow and tidy up
+
+fdi_inflow <- read_csv("regression/variables/fdi_inflow.csv") # worldbank filtered out 
+
+fdi_inflow <- fdi_inflow |>
+    select(Time, `Foreign direct investment, net inflows (BoP, current US$) [BX.KLT.DINV.CD.WD]`) |>
+  rename(period = "Time", fdiinflow = `Foreign direct investment, net inflows (BoP, current US$) [BX.KLT.DINV.CD.WD]`) |>
+  na.omit(fdi_inflow)
+
+
+# load dataset for agriculture fdi
+
+agriculture_fdi <- read_csv("regression/variables/agriculture_fdi.csv") ## https://www.gob.mx/se/acciones-y-programas/competitividad-y-normatividad-inversion-extranjera-directa
+
+agriculture_fdi <- agriculture_fdi |>
+  select(period, agri_fdi)
+
+ 
+
+rca_panel <- rca_big_df |>
+  left_join(fdi_inflow, by = "period")|>
+  left_join(exch_rate, by = "period") |>
+  left_join(agriculture_fdi, by = "period")
+
+rca_panel <- rca_panel |>
+  mutate(nafta_phase = factor(nafta_phase, levels = c("pre", "early", "mid", "late"))) # makes pre as reference category, maybe remove...
+
+
+```
+
+
+# EDA
+Now that we have our main dataframe `rca_panel`, we can conduct an EDA to see whether or not we need to do any transformations before we model.
+
+
+## 1) Distribution
+
+```{r}
+rca_panel |>
+  select(RCA) |>
+  ggplot(aes(x = RCA)) +
+  geom_histogram(binwidth = 0.3) +
+  theme_minimal()
+```
+
+We observe that our RCA is heavily right skewed. Hence, we *might* have to do a log(RCA) transformation due to the nature of the distribution.
+
+## 2) Time
+
+Show the time frame (1992-2000)
+
+```{r}
+rca_panel|>
+  distinct(period) |> 
+  arrange(period)
+```
+
+## 3) Num of products
+
+```{r}
+rca_panel |>
+  distinct(cmdCode) |> #gives us distinct values for cmdCode
+  nrow() #gives us the number of rows 
+```
+
+The number of HSCodes that we are analyzing is 191.
+
+## 4) Balanced
+
+Does every product appear in every year?
+
+```{r}
+rca_panel |>
+  count(cmdCode) |>
+  summary()
+```
+
+## 5) Correlations
+
+We must check for correlations between our explanatory variables
+
+```{r}
+rca_panel |>
+  distinct(period, post_nafta, exch_rate, fdiinflow, agri_fdi) |>
+  select(post_nafta, exch_rate, agri_fdi )|>
+  cor()
+```
+
+
+## 6) Transform the variables
+
+```{r}
+rca_panel <- rca_panel|>
+  mutate(
+    log_rca = log(RCA),  # if RCA is right-skewed
+    log_exch = log(exch_rate),
+    asinh_fdi = asinh(agri_fdi) # sinh = (e^x - e^-x)/2
+  )
+```
+
+# MODELS
+
+## Model 1 Fixed Effects Regresission
+
+```{r}
+model <- feols(RCA ~ post_nafta + log(exch_rate) + log(fdiinflow) | cmdCode,
+               data = rca_panel,
+               cluster = ~cmdCode)
+
+summary(model)
+```
+
+## Model 2 FER
+
+```{r}
+model2 <- feols(RCA ~ post_nafta + log(exch_rate) + asinh(agri_fdi) | cmdCode,
+               data = rca_panel,
+               cluster = ~cmdCode)
+summary(model2)
+```
+
+
+## Model 3
+
+```{r}
+model3 <- feols(log_rca ~ post_nafta + log_exch + asinh_fdi|cmdCode,
+               data = rca_panel,
+               cluster = ~cmdCode)
+summary(model3)
+```
+
+## Model 4 USE THIS
+```{r}
+
+model4 <- feols(log_rca ~ nafta_phase + log(exch_rate) + asinh(agri_fdi)|cmdCode,
+               data = rca_panel,
+               cluster = ~cmdCode)
+
+summary(model4)
+
+```
+
+### Interpretation
+
+The interpretation of model 4 will be as follows.
+
+**Log(Exchange Rate)**
+
+A 1 percent increase in the exchange rate is assoiated with a 0.43 percent increase in RCA (at the 1 percent level)
+
+**nafta_phaseearly**
+
+Log(RCA) was 0.41 (units) lower than in the pre-NAFTA baseline, holding exchange rate and agriculture_FDI constant (significant at the 5 percent level )
+
+** asinh(agri_fdi)**
+
+A rise in agriculture FDI is associated with a decrease in RCA (counterintuitive).
+
+A 1 percent increase in FDI in Mexico's Agriculture Sector is linked with a -0.142 percent decrease in RCA, holding all else constant.
+
+- FDI may have been used to increase domestic production rather than building export competitiveness in the global market.
+
+- FDI may flow into sectors that lose comparative advantage.
+
+- Aggregate agriculture FDI may have been flowing disproportionately into subsectors (i.e fertilizer, etc..) so FDI is not actually reaching the products driving the RCA variation.
+
+
+# TABLES
+
+```{r}
+
+# Main Model Table (Claude AI)
+
+model4_tidy <- broom::tidy(model4, conf.int = TRUE) |>
+  mutate(
+    term = case_when(
+      term == "nafta_phaseearly" ~ "NAFTA Phase: Early",
+      term == "nafta_phasepost"  ~ "NAFTA Phase: Post",
+      term == "log(exch_rate)"   ~ "Log Exchange Rate",
+      term == "asinh(agri_fdi)"  ~ "IHS Agricultural FDI",
+      TRUE ~ term
+    ),
+    stars = case_when(
+      p.value < 0.01 ~ "***",
+      p.value < 0.05 ~ "**",
+      p.value < 0.1  ~ "*",
+      TRUE           ~ ""
+    ),
+    estimate_stars = paste0(round(estimate, 3), stars),
+    std.error = paste0("(", round(std.error, 3), ")")
+  ) |>
+  select(term, estimate_stars, std.error, p.value)
+
+# Build gt table
+model4_tidy |>
+  gt() |>
+  tab_header(
+    title    = "Fixed Effects Estimation of NAFTA's Impact on RCA",
+    subtitle = "Dependent variable: Log(RCA)"
+  ) |>
+  cols_label(
+    term = "Variable",
+    estimate_stars = "Coefficient",
+    std.error = "Std. Error",
+    p.value = "p-value"
+  ) |>
+  fmt_number(
+    columns = p.value,
+    decimals = 3
+  ) |>
+  tab_spanner(
+    label = "Log(RCA)",
+    columns = c(estimate_stars, std.error, p.value)
+  ) |>
+  tab_footnote(
+    footnote = "*** p < 0.01, ** p < 0.05, * p < 0.1"  #shows statistical significance
+  ) |>
+  tab_footnote(
+    footnote = "Clustered standard errors at the cmdCode level. Reference category: Pre-NAFTA."
+  ) |>
+  tab_source_note(
+    source_note = "Source: UN Comtrade, Secretaría de Economía, Banco de México."
+  ) |>
+  tab_options(
+    heading.title.font.size = 14,
+    heading.subtitle.font.size = 12,
+    column_labels.font.weight  = "bold",
+    table.width = pct(100)
+  )
+
+```
+
+
+
+# SECTORS
+
+## 01 Animals; Live
 
 This section will calculate RCA over time before NAFTA of the animal section, containing HS product code of 0101 to 0106.
 
@@ -229,7 +501,7 @@ ggplot(rca_sector_01, aes(x = period, y = RCA, color = cmdCode, group = cmdCode)
 
 Interesting that Mexico seems to have a general RCA of Live Animals, but there was a sharop decline starting in 1993. NAFTA was enacted January 1, 1994- was it a driving factor in RCA shift? What about data from future years?
 
-# 02 Meat and Edible Meat offal
+## 02 Meat and Edible Meat offal
 
 ```{r}
 ## load the dataframes
@@ -258,7 +530,7 @@ ggplot(rca_sector_02, aes(x = period, y = RCA, color = cmdCode, group = cmdCode)
 
 Sector of 02 seems to not have much of a comparative advantage in Mexico.
 
-# 04 Dairy Produce; Birds' eggs; Natural Honey; Edible products of animal origin
+## 04 Dairy Produce; Birds' eggs; Natural Honey; Edible products of animal origin
 
 04, 0401 -\> 0410 EXCLUDING HONEY 0409
 
@@ -288,7 +560,7 @@ ggplot(rca_sector_04, aes(x = period, y = RCA, color = cmdCode, group = cmdCode)
   theme_bw()
 ```
 
-# 05 0ther Animal Products
+## 05 0ther Animal Products
 
 ANIMAL ORIGINATED PRODUCTS; NOT ELSEWHERE SPECIFIED OR INCLUDED
 
@@ -326,7 +598,7 @@ ggplot(rca_sector_05, aes(x = period, y = RCA, color = cmdCode, group = cmdCode)
 
 Interestingly, 0503 "Horsehair, waste" has a comparative advantage in that product, but the sector does not have a comparative advantage.
 
-# 07- Vegetables and Certain Roots and Tubes; Edible
+## 07- Vegetables and Certain Roots and Tubes; Edible
 
 ```{r  load datasets for product 07}
 # read the datasets in each folder
@@ -368,7 +640,7 @@ ggplot(mx_rca_07_1992_2000, aes(x = period, y = RCA)) +
 
 ```
 
-## Sector Analysis : 07
+\textbf{Sector Analysis : 07}
 
 Now, I are tasked to clean the dataset and calculate an RCA given the dataset with the entire sector. Using the code above, find a way to generalize the RCA calculation to continue the calculation, with an ultimate goal of showing an RCA graph for each product in the sector.
 
@@ -466,9 +738,9 @@ summary_CA_by_product |>
 
 I can fix this dataframe by changing the name of the previous one
 
-# Sector definitions
+\textbf{Sector definitions}
 
-### 07 - VEGETABLES AND CERTAIN ROOTS AND TUBERS; EDIBLE
+07 - VEGETABLES AND CERTAIN ROOTS AND TUBERS; EDIBLE
 
 -   0701 - Potatoes; fresh or chilled
 
@@ -496,11 +768,8 @@ I can fix this dataframe by changing the name of the previous one
 
 -   0713 - Vegetables, leguminous; shelled, whether or not skinned or split, dried
 
-- 
 
-Today Kash helped me tremendously setting up git hub for the first time ever!!
-
-# 08- FRUIT AND NUTS, EDIBLE; PEEL OF CITRUS FRUIT OR MELONS
+## 08- FRUIT AND NUTS, EDIBLE; PEEL OF CITRUS FRUIT OR MELONS
 
 
 We omit the following:
@@ -546,7 +815,7 @@ ggplot(rca_sector_08, aes(x = period, y = RCA, color = cmdCode, group = cmdCode)
 ```
 
 
-# 09- COFFEE, TEA, MATE AND SPICES
+## 09- COFFEE, TEA, MATE AND SPICES
 
 No 4 digit HS classification code is omitted.
 
@@ -586,7 +855,7 @@ ggplot(rca_sector_09, aes(x = period, y = RCA, color = cmdCode, group = cmdCode)
 
 
 
-# 10 CEREALS (needs fix, ask Prof. Valerie)
+## 10 CEREALS (needs fix, ask Prof. Valerie)
 
 No 4 digit HS classification code is omitted.
 
@@ -627,7 +896,7 @@ ggplot(rca_sector_10, aes(x = period, y = RCA, color = as.factor(cmdCode), group
 
 
 
-# 11  Milling products; malt; starch, etc.; gluten 
+## 11  Milling products; malt; starch, etc.; gluten 
 
 No 4 digit HS classification code is omitted.
 
@@ -667,7 +936,7 @@ ggplot(rca_sector_11, aes(x = period, y = RCA, color = as.factor(cmdCode), group
 
 
 
-# 12 Oilseeds; kernels; industrial medicinal plants; feed
+## 12 Oilseeds; kernels; industrial medicinal plants; feed
 
 We omit the following HS Codes:
 
@@ -724,7 +993,7 @@ ggplot(rca_sector_12, aes(x = period, y = RCA, color = as.factor(cmdCode), group
 
 
 
-# 13 Shellac; gum, fat and other plant liquids, juice
+## 13 Shellac; gum, fat and other plant liquids, juice
 
 ```{r}
 mx_xports_sector_13 <- read_csv("mx_xports_prod_i/mx_xports_sector_13.csv")
@@ -762,7 +1031,7 @@ ggplot(rca_sector_13, aes(x = period, y = RCA, color = as.factor(cmdCode), group
   theme_bw()
 ```
 
-# 14 Planting materials for planting; other plant products
+## 14 Planting materials for planting; other plant products
 
 
 ```{r}
@@ -802,7 +1071,7 @@ ggplot(rca_sector_14, aes(x = period, y = RCA, color = as.factor(cmdCode), group
 ```
 
 
-# 15 Animal and vegetable oils and fats; refined edible oils and fats
+## 15 Animal and vegetable oils and fats; refined edible oils and fats
 
 We Omit the following:
 
@@ -858,7 +1127,7 @@ ggplot(rca_sector_15, aes(x = period, y = RCA, color = as.factor(cmdCode), group
 ```
 
 
-# 16 Meat, fish and other aquatic invertebrate products
+## 16 Meat, fish and other aquatic invertebrate products
 
 
 RCA Sector 16
@@ -897,7 +1166,8 @@ ggplot(rca_sector_16, aes(x = period, y = RCA, color = as.factor(cmdCode), group
   theme_bw()
 ```
 
-# 17 Sugar and confectionery
+## 17 Sugar and confectionery
+
 RCA Sector 17
 
 ```{r}
@@ -935,7 +1205,7 @@ ggplot(rca_sector_17, aes(x = period, y = RCA, color = as.factor(cmdCode), group
 ```
 
 
-# 18 Cocoa and cocoa products
+## 18 Cocoa and cocoa products
 RCA Sector 18
 
 ```{r}
@@ -972,7 +1242,7 @@ ggplot(rca_sector_18, aes(x = period, y = RCA, color = as.factor(cmdCode), group
   theme_bw()
 ```
 
-# 19 Cereal flour, starch, etc. or dairy products; cakes
+## 19 Cereal flour, starch, etc. or dairy products; cakes
 
 RCA Sector 19
 
@@ -1015,7 +1285,7 @@ ggplot(rca_sector_19, aes(x = period, y = RCA, color = as.factor(cmdCode), group
 
 
 
-# 20 Products of vegetables, fruits or other parts of plants
+## 20 Products of vegetables, fruits or other parts of plants
 
 RCA Sector 20
 
@@ -1057,7 +1327,7 @@ ggplot(rca_sector_20, aes(x = period, y = RCA, color = as.factor(cmdCode), group
 ```
 
 
-# 21 Miscellaneous food
+## 21 Miscellaneous food
 
 RCA Sector 21
 
@@ -1098,7 +1368,7 @@ ggplot(rca_sector_21, aes(x = period, y = RCA, color = as.factor(cmdCode), group
   theme_bw()
 ```
 
-# 22  Beverages, wine and vinegar
+## 22  Beverages, wine and vinegar
 
 RCA Sector 22
 
@@ -1141,7 +1411,7 @@ ggplot(rca_sector_22, aes(x = period, y = RCA, color = as.factor(cmdCode), group
 
 
 
-# 23 Food industry residues and waste; formulated feed
+## 23 Food industry residues and waste; formulated feed
 
 RCA Sector 23
 
@@ -1184,7 +1454,7 @@ ggplot(rca_sector_23, aes(x = period, y = RCA, color = as.factor(cmdCode), group
 
 
 
-# 24 Tobacco, tobacco and tobacco substitute products
+## 24 Tobacco, tobacco and tobacco substitute products
 
 RCA Sector 24
 
@@ -1226,7 +1496,7 @@ ggplot(rca_sector_24, aes(x = period, y = RCA, color = as.factor(cmdCode), group
 ```
 
 
-# 50 Silk
+## 50 Silk
 
 RCA Sector 50
 
@@ -1267,7 +1537,7 @@ ggplot(rca_sector_50, aes(x = period, y = RCA, color = as.factor(cmdCode), group
   theme_bw()
 ```
 
-# 51 Wool and other animal hair
+## 51 Wool and other animal hair
 
 RCA Sector 51
 
@@ -1314,7 +1584,7 @@ ggplot(rca_sector_51, aes(x = period, y = RCA, color = as.factor(cmdCode), group
   theme_bw()
 ```
 
-# 52 Cotton
+## 52 Cotton
 
 
 Omit
@@ -1359,7 +1629,7 @@ ggplot(rca_sector_52, aes(x = period, y = RCA, color = as.factor(cmdCode), group
 ```
 
 
-# 53 Other plant fibers
+## 53 Other plant fibers
 
 We omit the following:
 
@@ -1444,7 +1714,7 @@ ggplot(rca_sector_53, aes(x = period, y = RCA, color = as.factor(cmdCode), group
 #}
 ```
 
-# run RCA all sectors
+### run RCA all sectors
 
 ```{r}
 rca_all <- purrr::map_dfr(sector_codes, process_sector)
@@ -1459,7 +1729,7 @@ rca_all <- rca_all |>
 ```
 
 
-# plot one sector (look at HS01 Animals: live for refernece)
+#### plot one sector (look at HS01 Animals: live for refernece)
 
 ```{r}
 
@@ -1480,7 +1750,7 @@ ggplot(
 
 
 
-# plot all sectors at once
+#### plot all sectors at once
 ```{r}
 ggplot(rca_all, aes(x = period, y = RCA)) +
   geom_line(color = "steelblue") +
@@ -1517,5 +1787,4 @@ for (s in sectors) { ## for all elements s in list sectors,
   print(allplots)
 }
 ```
-
 
