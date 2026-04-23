@@ -26,6 +26,7 @@ library(purrr) # this package is to loop and automate this entire process, inste
 library(fixest) #fixed fx
 library(broom)
 library(haven) ## allows to read .dta files meant for stata
+library(tidyverse)
 ```
 
 This senior project document will serve as the backbone of methodology and analysis part of the Senior Project"
@@ -209,8 +210,7 @@ rca_big_df <- rca_big_df |>
     post_nafta = if_else(period >= 1994, 1, 0), # 1 for post nafta, 0 otherwise
     nafta_phase = case_when(
       period < 1994 ~ "pre", # period < 1994 make it pre
-      period >= 1994 & period <= 2000 ~ "early", # period thru 1994 and 2000 titled early
-      period > 2000 ~ "mature" #pweiod > 2000 titled after
+      period >= 1994 & period <= 2000 ~ "post" # period thru 1994 and 2000 titled early
   )
   )
 ```
@@ -242,31 +242,24 @@ agriculture_fdi <- read_csv("regression/variables/agriculture_fdi.csv") ## https
 agriculture_fdi <- agriculture_fdi |>
   select(period, agri_fdi)
 
-#load the tariff datafreame
-# tariff_data <- read_dta("regression/variables/tar_val.dta")
 
-tariff <- read_dta("regression/variables/tar_val.dta") |> 
-  mutate(hs4 = floor(hs8num / 1000)) |>   # collapse 8 digitHS code to 6-digit
-  group_by(hs4, year) |>
-  summarise(
-    ntr_rate = mean(ntr_rate, na.rm = TRUE),
-    .groups = "drop"
-  ) |>
-  filter(year >= 1990, year <= 2000) |>
-  rename(year = period)
+```
 
- 
+#Main DATAFRAME
+```{r}
 
+## Create main Dataframe
 rca_panel <- rca_big_df |>
-  left_join(fdi_inflow, by = "period")|>
+  left_join(fdi_inflow, by = "period") |>
   left_join(exch_rate, by = "period") |>
-  left_join(agriculture_fdi, by = "period")
+  left_join(agriculture_fdi, by = "period") |>
+  filter(nchar(cmdCode) == 4) 
+  
 
-rca_panel <- rca_panel |>
-  mutate(nafta_phase = factor(nafta_phase, levels = c("pre", "early", "mid", "late"))) |> # makes pre as reference category, maybe remove...
-  filter(nchar(cmdCode) == 4) # Keeps only HS4 Codes instead of aggregates
+## store all cmdCodes as a vector
 
-
+hs4_codes <- rca_panel |>
+  pull(cmdCode) 
 ```
 
 
@@ -338,6 +331,207 @@ rca_panel <- rca_panel|>
   )
 ```
 
+
+## 7) Num of Prods RCA > 1
+
+```{r}
+rca_greq1 <- rca_panel |>
+  filter(RCA >= 1)
+
+## what are the products with RCA >= 1? regardless of time
+
+rca_greq1 |>
+  select(cmdCode) |>
+  unique()
+```
+
+
+## 8) Products which did not start off with comparative advantage before nafta, and ended up with one after?
+
+```{r}
+
+#products that did not have a CA before NAFTA
+no_ca_before <- rca_panel |>
+  filter(post_nafta == 0) |> ## before nafta
+  group_by(cmdCode) |> #group by commodity Code
+  summarise(had_ca = any(has_CA)) |> # if any values in has_CA is true, i.e does have a CA
+  filter(had_ca == FALSE) |>
+  pull(cmdCode)
+
+no_ca_before
+
+# of those products which ones developed a comparative advantage after 1994?
+gained_ca_after <- rca_panel  |>
+  filter(post_nafta == 1, cmdCode %in% no_ca_before) |>
+  group_by(cmdCode) |>
+  summarise(gained_ca = any(has_CA)) |>
+  filter(gained_ca == TRUE) |>
+  pull(cmdCode)
+
+gained_ca_after
+```
+
+## 9) Descriptive overview
+
+```{r}
+rca_panel |>
+  group_by(post_nafta) |>
+  summarise(
+    mean_rca = mean(RCA, na.rm = TRUE),
+    median_rca = median(RCA, na.rm = TRUE),
+    sd_rca = sd(RCA, na.rm = TRUE),
+    min_rca = min(RCA, na.rm = TRUE),
+    max_rca = max(RCA, na.rm = TRUE),
+    pct_with_RCA = mean(has_CA)*100
+  )
+```
+
+## 10) Prevalence in RCA by sector
+
+```{r}
+rca_panel |>
+  group_by(sector, post_nafta) |>
+  summarise(
+    n_products= n_distinct(cmdCode), #counts num of distinct values
+    pct_with_CA = mean(has_CA) * 100,
+    mean_rca = mean(RCA, na.rm = TRUE)
+  )
+```
+
+## 11) Year by Year
+
+```{r}
+rca_panel |>
+  group_by(period) |>
+  summarise(
+    n_with_CA = sum(has_CA),
+    total_products = n_distinct(cmdCode),
+    pct_with_CA = mean(has_CA)*100
+  )
+```
+
+## 12) Volatility of RCA
+
+```{r}
+ rca_panel |>
+  arrange(cmdCode, period) |>
+  group_by(cmdCode) |>
+  summarise(
+    switches = sum(has_CA != lag(has_CA), na.rm = TRUE)
+  ) |>
+  filter(switches > 1) |>
+  arrange(desc(switches))
+```
+
+## 13 Regressor variation
+
+```{r}
+rca_panel |>
+  group_by(nafta_phase) |>
+  summarise(
+    mean_exch_rate = mean(exch_rate, na.rm = TRUE),
+    mean_fdi = mean(fdiinflow, na.rm = TRUE),
+    mean_agri_fdi = mean(agri_fdi, na.rm = TRUE),
+    n_obs = n()
+  )
+```
+
+## 14) RCA Trajectories 
+
+```{r}
+
+get_rca_trajectory <- function(tempcmdcde) {
+  rca_panel |>
+    filter(cmdCode == tempcmdcde) |>
+    select(period, cmdCode, RCA, has_CA, exch_rate, fdiinflow) |>
+    arrange(period) |>
+    mutate(rca_change = RCA - lag(RCA))  # how much RCA shifted each year
+}
+
+map(unique(rca_panel$cmdCode), get_rca_trajectory) |>
+  list_rbind()
+```
+
+## 15) How long did it take for products to gain RCA after NAFTA?
+
+```{r}
+rca_panel |>
+  filter(post_nafta == 1, has_CA == TRUE) |>
+  group_by(cmdCode) |>
+  summarise(first_ca_year = min(period)) |>
+  mutate(years_after_nafta = first_ca_year - 1994) |>
+  arrange(years_after_nafta) |>
+  arrange(desc(years_after_nafta))
+```
+
+## 16) Consistency in RCAS
+
+```{r}
+rca_panel |>
+  filter(post_nafta == 1) |>
+  group_by(cmdCode) |>
+  summarise(
+    years_with_CA = sum(has_CA),
+    total_years = n(),
+    consistency = years_with_CA/total_years
+  ) |>
+  mutate(ca_type = case_when(
+    consistency == 1 ~ "Persistent CA",
+    consistency >= 0.5 ~ "Majority CA",
+    consistency > 0 & consistency < 0.5 ~ "Sporadic CA",
+    consistency == 0 ~ "No CA"
+  )) |>
+  count(ca_type)
+```
+
+
+## 17) Avg RCA By sector
+
+```{r}
+rca_panel |>
+  group_by(sector, post_nafta) |>
+  summarise(
+    mean_rca = mean(RCA),
+    median_rca  = median(RCA),
+    n_products = n_distinct(cmdCode)
+  ) |>
+  pivot_wider(
+    names_from = post_nafta,
+    values_from = c(mean_rca, median_rca, n_products),
+    names_prefix = "post_"
+  )
+```
+
+## 18) Largest RCA Gains?
+
+```{r}
+rca_panel |>
+  group_by(sector, post_nafta) |>
+  summarise(mean_rca = mean(RCA)) |>
+  pivot_wider(names_from = post_nafta, values_from = mean_rca, names_prefix = "period_") |>
+  mutate(rca_gain = period_1 - period_0) |>
+  arrange(desc(rca_gain))
+```
+
+## 19) FDI over time
+
+```{r}
+ggplot(data = rca_panel, aes(x = period, y = fdiinflow)) +
+  geom_line() +
+  theme_minimal() +
+  xlab("Time") +
+  ylab("Foreign Direct Investment to Mexico")
+```
+
+```{r}
+ggplot(data = rca_panel, aes(x = period, y = agri_fdi)) +
+  geom_line() +
+  theme_minimal() +
+  xlab("Time") +
+  ylab("Agriculture Foreign Direct Investment to Mexico")
+```
+
+
 # MODELS
 
 ## Model 1 Fixed Effects Regresission
@@ -379,6 +573,8 @@ model4 <- feols(log_rca ~ nafta_phase + log(exch_rate) + asinh(agri_fdi)|cmdCode
 summary(model4)
 
 ```
+
+
 
 ### Interpretation
 
@@ -467,6 +663,64 @@ model4_tidy |>
     table.width = pct(100)
   )
 
+```
+
+
+## Transition table
+
+```{r}
+
+#Generated by Claude
+
+transition_table <- rca_panel |>
+  filter(post_nafta == 0) |>
+  group_by(cmdCode) |>
+  summarise(had_ca = any(has_CA)) |>
+  inner_join(
+    rca_panel |>
+      filter(post_nafta == 1) |>
+      group_by(cmdCode) |>
+      summarise(gained_ca = any(has_CA)),
+    by = "cmdCode"
+  ) |>
+  mutate(transition = case_when(
+    !had_ca &  gained_ca ~ "Gained RCA post-NAFTA",
+    had_ca  & !gained_ca ~ "Lost RCA post-NAFTA",
+    had_ca  &  gained_ca ~ "Maintained RCA",
+    !had_ca & !gained_ca ~ "Never had RCA"
+  )) |>
+  count(transition) |>
+  rename(
+    `Transition Status` = transition,
+    `Number of Products` = n
+  )
+
+
+transition_table |>
+  gt() |>
+  tab_header(
+    title    = "Comparative Advantage Transitions Around NAFTA (1994)",
+    subtitle = "Mexico's Agricultural Sector — HS Codes 01–53"
+  ) |>
+  tab_spanner(
+    label   = "Pre vs. Post-NAFTA CA Status",
+    columns = everything()
+  ) |>
+  cols_align(align = "left",  columns = `Transition Status`) |>
+  cols_align(align = "center", columns = `Number of Products`) |>
+  tab_style(
+    style     = cell_text(weight = "bold"),
+    locations = cells_column_labels()
+  ) |>
+  tab_style(
+    style     = cell_fill(color = "#f0f0f0"),
+    locations = cells_body(rows = seq(1, nrow(transition_table), 2))
+  ) |>
+  tab_source_note(
+    source_note = "Source: UN Comtrade. RCA calculated using Balassa (1965) index. CA defined as RCA ≥ 1."
+  ) |>
+  opt_table_font(font = "Times New Roman") |>  # standard for economics papers
+  opt_stylize(style = 1, color = "gray")
 ```
 
 # SECTORS
@@ -1659,39 +1913,6 @@ rca_all <- rca_all |>
   )
 ```
 
-#### plot one sector (look at HS01 Animals: live for refernece)
-
-```{r}
-
-ggplot(
-  rca_all |> filter(sector == "01"), #filter for first sector
-  aes(x = period, y = RCA, color = cmdCode, group = cmdCode)
-) +
-  geom_line(size = 1) +
-  geom_hline(yintercept = 1, linetype = "dashed") +
-  labs(
-    title = "RCA for Sector HS01  (Live Animals)",
-    x = "Year",
-    y = "RCA",
-    color = "HS Product"
-  ) +
-  theme_minimal()
-```
-
-#### plot all sectors at once
-
-```{r}
-ggplot(rca_all, aes(x = period, y = RCA)) +
-  geom_line(color = "steelblue") +
-  geom_hline(yintercept = 1, linetype = "dashed") +
-  facet_wrap(~cmdCode) +
-  theme_minimal() +
-  labs(
-    title = "RCA Over Time by Product",
-    x = "Year",
-    y = "RCA"
-  )
-```
 
 ```{r}
 sectors <- unique(rca_all$sector) ## creatrs a list for all elements in sector_code MAKE SURE TO ADD EACH SECTOR CODE!
