@@ -27,6 +27,8 @@ library(fixest) #fixed fx
 library(broom)
 library(haven) ## allows to read .dta files meant for stata
 library(tidyverse)
+library(tidysynth)
+library(gsynth)
 ```
 
 This senior project document will serve as the backbone of methodology and analysis part of the Senior Project"
@@ -1079,7 +1081,7 @@ ggplot(rca_sector_53, aes(x = period, y = RCA, color = cmdCode, group = cmdCode)
   theme_bw()
 ```
 
-# Loard Variables for Regression
+# Load Variables for Regression
 
 
 ```{r}
@@ -1091,12 +1093,12 @@ exch_rate <- read_csv("regression/variables/exch_rates.csv")
 
 # load dataset for fdi inflow and tidy up
 
-fdi_inflow <- read_csv("regression/variables/fdi_inflow.csv") # worldbank filtered out 
+fdi_inflow <- read_csv("regression/variables/fdi_inflow_to_mx.csv") # worldbank filtered out 
 
-fdi_inflow <- fdi_inflow |>
-    select(Time, `Foreign direct investment, net inflows (BoP, current US$) [BX.KLT.DINV.CD.WD]`) |>
-  rename(period = "Time", fdiinflow = `Foreign direct investment, net inflows (BoP, current US$) [BX.KLT.DINV.CD.WD]`) |>
-  na.omit(fdi_inflow)
+#fdi_inflow <- fdi_inflow |>
+  #  select(Time, `Foreign direct investment, net inflows (BoP, current US$) [BX.KLT.DINV.CD.WD]`) |>
+  #rename(period = "Time", fdi_inflow_usd = `Foreign direct investment, net inflows (BoP, current US$) [BX.KLT.DINV.CD.WD]`) |>
+ # na.omit(fdi_inflow)
 
 
 # load datasets for agriculture fdi
@@ -1135,7 +1137,8 @@ rca_panel <- rca_big_df |>
   left_join(fdi_inflow, by = "period") |>
   left_join(exch_rate, by = "period") |>
   left_join(agriculture_fdi_total, by = "period") |>
-  filter(nchar(cmdCode) == 4) 
+  filter(nchar(cmdCode) == 4) |>
+  mutate(log_rca = log(RCA))
   
 
 ## store all cmdCodes as a vector
@@ -1179,7 +1182,7 @@ rca_panel |>
   nrow() #gives us the number of rows 
 ```
 
-The number of HSCodes that we are analyzing is 191.
+The number of HSCodes that we are analyzing is 194.
 
 ## 4) Balanced
 
@@ -1197,7 +1200,7 @@ We must check for correlations between our explanatory variables
 
 ```{r}
 rca_panel |>
-  distinct(period, post_nafta, exch_rate, fdiinflow, total_agri_fdi) |>
+  distinct(period, post_nafta, exch_rate, fdi_inflow_usd, total_agri_fdi) |>
   select(post_nafta, exch_rate, total_agri_fdi )|>
   cor()
 ```
@@ -1312,7 +1315,7 @@ rca_panel |>
   group_by(nafta_phase) |>
   summarise(
     mean_exch_rate = mean(exch_rate, na.rm = TRUE),
-    mean_fdi = mean(fdiinflow, na.rm = TRUE),
+    mean_fdi = mean(fdi_inflow_usd, na.rm = TRUE),
     mean_agri_fdi = mean(total_agri_fdi, na.rm = TRUE),
     n_obs = n()
   )
@@ -1325,7 +1328,7 @@ rca_panel |>
 get_rca_trajectory <- function(tempcmdcde) {
   rca_panel |>
     filter(cmdCode == tempcmdcde) |>
-    select(period, cmdCode, RCA, has_CA, exch_rate, fdiinflow) |>
+    select(period, cmdCode, RCA, has_CA, exch_rate, fdi_inflow_usd) |>
     arrange(period) |>
     mutate(rca_change = RCA - lag(RCA))  # how much RCA shifted each year
 }
@@ -1398,7 +1401,7 @@ rca_panel |>
 ## 19) FDI over time
 
 ```{r}
-ggplot(data = rca_panel, aes(x = period, y = fdiinflow)) +
+ggplot(data = rca_panel, aes(x = period, y = fdi_inflow_usd)) +
   geom_line() +
   theme_minimal() +
   xlab("Time") +
@@ -1419,7 +1422,7 @@ ggplot(data = rca_panel, aes(x = period, y = total_agri_fdi)) +
 ## Model 1 Fixed Effects Regresission
 
 ```{r}
-model <- feols(RCA ~ post_nafta + log(exch_rate) + log(fdiinflow) | cmdCode,
+model <- feols(RCA ~ post_nafta + log(exch_rate) + log(fdi_inflow_usd) | cmdCode,
                data = rca_panel,
                cluster = ~cmdCode)
 
@@ -1432,13 +1435,35 @@ summary(model)
 
 ```{r}
 
-model4 <- feols(log(RCA) ~ post_nafta + log(exch_rate) + asinh(total_agri_fdi)|cmdCode,
+model4 <- feols(log(RCA) ~ post_nafta + log(exch_rate) + log(total_agri_fdi)|cmdCode,
                data = rca_panel,
                cluster = ~cmdCode)
 
 summary(model4)
 
 ```
+
+### Model 4 Specification
+
+
+$$
+\log(\text{RCA}_{it}) = \beta_1 \text{PostNAFTA}_{t} + \beta_2 \log(\text{ExchRate}_{t}) + \beta_3 \log(\text{AgriFFDI}_{t}) + \alpha_i + \varepsilon_{it}
+$$
+
+where $i$ indexes HS4 product codes, $t$ indexes years, and:
+
+- $\log(\text{RCA}_{it})$ is the log of the Balassa (1965) Revealed Comparative Advantage index for product $i$ in year $t$
+- $\text{PostNAFTA}_{t}$ is a binary indicator equal to 1 for $t \geq 1994$ and 0 otherwise
+- $\log(\text{ExchRate}_{t})$ is the log of the Mexican peso--US dollar exchange rate (pesos per USD)
+- $\log(\text{AgriFFDI}_{t})$ is the log of total foreign direct investment inflows into Mexico's agricultural sector
+- $\alpha_i$ are product-level fixed effects absorbing time-invariant heterogeneity across HS4 codes
+- $\varepsilon_{it}$ is the idiosyncratic error term, with standard errors clustered at the $\alpha_i$ (cmdCode) level
+
+The model is estimated via Ordinary Least Squares with product-level fixed effects using the `feols` function from the `fixest` package in R [@bergé2018]. 
+The within-transformation removes $\alpha_i$, so $\beta_1$ identifies the average change in log(RCA) 
+associated with NAFTA implementation, holding exchange rate and agricultural FDI constant, 
+within product codes over time.
+
 
 
 ### Interpretation
@@ -1465,23 +1490,8 @@ A 1 percent increase in FDI in Mexico's Agriculture Sector is linked with a -0.1
 
 -   Aggregate agriculture FDI may have been flowing disproportionately into subsectors (i.e fertilizer, etc..) so FDI is not actually reaching the products driving the RCA variation.
 
-### Monte Carlo Simulation Pseudo Code
 
-```{r}
-set.seed(123)
-placebo_results <- replicate(3000, {
-  fake_year <- sample(1992:2000, 1)
-  rca_panel$fake_nafta <- if_else(rca_panel$period >= fake_year, 1, 0)
-  coef(feols(RCA ~ fake_nafta + log(exch_rate) + log(fdiinflow) | cmdCode,
-             data = rca_panel))["fake_nafta"]
-})
-
-# Plot distribution of placebo coefficients
-hist(placebo_results, main = "Placebo Distribution")
-abline(v = 0.451646, col = "red")
-```
-
-# TABLES
+# TABLES NEEDS FIXING
 
 ```{r}
 
@@ -1604,6 +1614,611 @@ transition_table |>
   opt_stylize(style = 1, color = "gray")
 ```
 
+# MACHINE LEARNING
+
+We can use Synthetic Control at the sector level treating each HS2 sector as a unit, using other sectors as the "donor pool." The question this can answer would be for a given sector, what would its RCA trajectory have looked like if NAFTA had not happened, constructed as a weighted combination of other sectors?
+
+
+```{r}
+
+winsorize <- function(x, low = 0.01, high = 0.99) {
+  q <- quantile(x, probs = c(low, high), na.rm = TRUE)
+  pmax(pmin(x, q[2]), q[1])
+}
+
+# ── Prep: sector-level panel ──────────────────────────────────────────────────
+sector_panel <- rca_panel |>
+  filter(
+    !is.na(RCA),
+    is.finite(RCA),
+    RCA > 0,
+    nchar(cmdCode) == 4
+  ) |>
+  mutate(RCA_w = winsorize(RCA)) |>
+  group_by(sector, period) |>
+  summarise(
+    log_mean_rca = mean(log(RCA_w), na.rm = TRUE),
+    n_products   = n_distinct(cmdCode),
+    .groups      = "drop"
+  )
+
+
+# which years does each sector actually cover? are there any years that 
+sector_panel |>
+  group_by(sector) |>
+  summarise(
+    min_year = min(period),
+    max_year = max(period),
+    n_years = n_distinct(period),
+    missing = paste(setdiff(min_year:max_year, period), collapse = ", ")
+  ) |>
+  arrange(n_years)
+```
+
+```{r}
+# ── Drop sectors with incomplete year coverage ────────────────────────────────
+full_years <- sort(unique(sector_panel$period))
+
+complete_sectors <- sector_panel |>
+  group_by(sector) |>
+  summarise(n_years = n_distinct(period)) |>
+  filter(n_years == length(full_years)) |>
+  pull(sector)
+
+cat("Sectors retained:", length(complete_sectors), "\n")
+cat("Sectors dropped: ", 
+    paste(setdiff(unique(sector_panel$sector), complete_sectors), 
+          collapse = ", "), "\n")
+
+sector_panel_clean <- sector_panel |>
+  filter(sector %in% complete_sectors)
+
+# ── Synthetic control for sector 07 ──────────────────────────────────────────
+synth_07 <- sector_panel_clean |>
+  synthetic_control(
+    outcome = log_mean_rca,
+    unit = sector,
+    time = period,
+    i_unit  = "07",
+    i_time = 1994,
+    generate_placebos = TRUE
+  ) |>
+  generate_predictor(
+    time_window = 1992,
+    rca_1992    = log_mean_rca
+  ) |>
+  generate_predictor(
+    time_window = 1993,
+    rca_1993    = log_mean_rca
+  ) |>
+  generate_weights(
+    optimization_window = 1990:1993,
+    margin_ipop  = 0.02,
+    sigf_ipop = 7,
+    bound_ipop = 6
+  ) |>
+  generate_control()
+
+# ── Plots ─────────────────────────────────────────────────────────────────────
+plot_trends(synth_07) +
+  geom_vline(xintercept = 1994, linetype = "dashed", color = "blue") +
+  labs(
+    title    = "Sector 07 (Vegetables): Actual vs Synthetic RCA",
+    subtitle = "Synthetic donor pool = all other complete agricultural sectors",
+    x = "Year", y = "log(mean RCA)"
+  ) +
+  theme_bw()
+
+plot_differences(synth_07) +
+  geom_vline(xintercept = 1994, linetype = "dashed", color = "blue") +
+  labs(
+    title    = "NAFTA Effect on Sector 07: Gap Between Actual and Synthetic",
+    subtitle = "Positive = actual RCA exceeded synthetic counterfactual",
+    x = "Year", y = "Δ log(mean RCA)"
+  ) +
+  theme_bw()
+
+plot_placebos(synth_07) +
+  labs(
+    title    = "Placebo Tests: Sector 07 vs Donor Pool",
+    subtitle = "Sector 07 line should stand out from placebo distribution",
+    x = "Year", y = "Δ log(mean RCA)"
+  ) +
+  theme_bw()
+
+plot_weights(synth_07) +
+  labs(title = "Donor Sector Weights — Sector 07 Synthetic Control")
+
+# ── Significance ──────────────────────────────────────────────────────────────
+grab_significance(synth_07)
+```
+
+
+## DiD model
+
+```{r, DiD DF}
+## Clean DiD setup (NAFTA is a common time shock)
+
+did_df <- rca_panel |>
+  filter(!is.na(log_rca), is.finite(log_rca)) |>
+  mutate(unit_id = as.numeric(factor(cmdCode))) |>
+  arrange(unit_id, period)
+
+## NAFTA post dummy (global shock)
+did_df <- did_df |>
+  mutate(post_nafta = as.integer(period >= 1994))
+
+## Correct DiD / TWFE model (NO period FE, NO event_time)
+es_model <- feols(
+  log_rca ~ post_nafta + log(fdi_inflow_usd) + log_exch | unit_id,
+  data = did_df,
+  cluster = ~unit_id
+)
+
+summary(es_model)
+
+```
+
+
+After NAFTA
+
+- about 0.58 log points lower on average, holding product fixed effects constant and controlling for macro variables.
+
+- Post-NAFTA, revealed comparative advantage declines by ~44% within products relative to their pre-NAFTA baseline.
+
+FDI Effect
+
+- A 1% increase in FDI inflows is associated with approximately 0.18% decrease in RCA, holding other factors constant.
+
+
+- FDI inflows may be associated with reduced revealed comparative advantage in domestic product production, possibly due to:
+
+  -     foreign substitution of domestic production
+  
+  -     restructuring toward foreign-controlled production chains
+  
+-      reallocation away from traditional RCA sectors
+
+Exchange rate
+
+-   A 1% increase in exchange rate (depreciation depending on definition) is associated with ~0.23% increase in RCA, but not statistically reliable.
+
+- weaker currency → exports become more competitive → RCA rises
+
+
+
+
+## SCM Model
+
+### Specification
+
+The synthetic control estimator follows @abadie2010synthetic. Confidential notes from Dr. Gautam Sethi of Bard College was of usage as well. His textbook can be found here
+
+-   (https://www.mit.edu/~jhainm/Paper/ccs.pdf)
+
+-   (https://analytics.thephilomath.org/chapter/panel-data)
+
+Let $Y_{it}$ denote the log RCA of unit $i$ in year $t$, 
+where $i \in \{$Mexico, Spain, India, Indonesia, Thailand, 
+Bolivia, Argentina, Guatemala, Morocco$\}$ and $t \in \{1990, \ldots, 2000\}$.
+
+**Treated unit:** Mexico ($i = 1$), receiving treatment (NAFTA) at $t^* = 1994$.
+
+**Donor pool:** $J$ countries unexposed to NAFTA, indexed $i = 2, \ldots, J+1$.
+
+The synthetic control is a weighted combination of donor units:
+
+$$
+\hat{Y}_{1t}^{(0)} = \sum_{j=2}^{J+1} w_j^* Y_{jt}
+$$
+
+where $w_j^* \geq 0$ for all $j$ and $\sum_{j=2}^{J+1} w_j^* = 1$.
+
+The optimal weights $\mathbf{W}^* = (w_2^*, \ldots, w_{J+1}^*)$ are chosen to minimize 
+the pre-treatment discrepancy:
+
+$$
+\mathbf{W}^* = \arg\min_{\mathbf{W}} \sum_{m=1}^{k} v_m \left( X_{1m} - \sum_{j=2}^{J+1} w_j X_{jm} \right)^2
+$$
+
+subject to $w_j \geq 0$ and $\sum_{j=2}^{J+1} w_j = 1$, where $X_{im}$ denotes 
+the $m$-th pre-treatment predictor for unit $i$, specifically, 
+$\log(\text{RCA})$ in years 1990, 1991, 1992, and 1993, 
+as well as the mean pre-treatment $\log(\text{RCA})$ over $1990$--$1993$ 
+and $v_m$ are predictor weights chosen to minimize out-of-sample 
+prediction error over the pre-treatment period.
+
+The estimated treatment effect of NAFTA on Mexico's vegetable RCA in year $t \geq 1994$ is:
+
+$$
+\hat{\tau}_{1t} = Y_{1t} - \hat{Y}_{1t}^{(0)} = Y_{1t} - \sum_{j=2}^{J+1} w_j^* Y_{jt}
+$$
+
+Statistical inference is conducted via the permutation-based placebo test of 
+@abadie2010synthetic. Each donor country $j$ is iteratively assigned as the 
+placebo treated unit, and a synthetic control is constructed from the remaining 
+donors. The post- to pre-treatment mean squared prediction error (MSPE) ratio is 
+computed for each unit:
+
+$$
+\text{MSPE Ratio}_i = \frac{\frac{1}{T_1}\sum_{t \geq t^*} (Y_{it} - \hat{Y}_{it}^{(0)})^2}
+{\frac{1}{T_0}\sum_{t < t^*} (Y_{it} - \hat{Y}_{it}^{(0)})^2}
+$$
+
+where $T_0$ and $T_1$ denote the number of pre- and post-treatment periods 
+respectively. The Fisher's exact $p$-value is the proportion of units 
+(including Mexico) with an MSPE ratio at least as large as Mexico's.
+
+
+
+### Windsorization
+
+```{r}
+country_a_xports_sector_07 <- read_csv(
+  "regression/scm2/country_a_xports_sector_07.csv",
+  locale = locale(encoding = "Latin1")
+) |>
+  mutate(reporterDesc = stringi::stri_trans_general(reporterDesc, "Latin-ASCII"))
+
+country_a_xports_of_all_prods <- read_csv(
+  "regression/scm2/country_a_xports_of_all_prods.csv",
+  locale = locale(encoding = "Latin1")
+) |>
+  mutate(reporterDesc = stringi::stri_trans_general(reporterDesc, "Latin-ASCII"))
+
+```
+
+```{r}
+
+# ── Winsorize ────────────────────────────────────────────────────────────────
+winsorize <- function(x, low = 0.01, high = 0.99) {
+  q <- quantile(x, probs = c(low, high), na.rm = TRUE)
+  pmax(pmin(x, q[2]), q[1])
+}
+
+years <- 1990:2000
+
+# ── Step 1: World aggregates ─────────────────────────────────────────────────
+world_prod_07 <- map_dfr(time_periods, function(t) {
+  world_file <- file.path(base_path,
+                          paste0("world_xports_prod_i_time_", t),
+                          paste0("world_xports_sector_07_time_", t, ".csv"))
+  if (!file.exists(world_file)) return(NULL)
+
+  read_csv(world_file, show_col_types = FALSE) |> necessary_variables()
+}) |>
+  filter(period %in% years) |>
+  group_by(period) |>
+  summarise(world_product_value = sum(fobvalue, na.rm = TRUE),
+            .groups = "drop")
+
+world_total <- world_xports_all |>
+  group_by(period) |>
+  summarise(total_world_value = sum(fobvalue, na.rm = TRUE),
+            .groups = "drop") |>
+  filter(period %in% years)
+
+# ── Step 2: Country-level exports ────────────────────────────────────────────
+donor_prod <- country_a_xports_sector_07 |>
+  group_by(reporterDesc, period) |>
+  summarise(country_product_value = sum(fobvalue, na.rm = TRUE),
+            .groups = "drop")
+
+donor_total <- country_a_xports_of_all_prods |>
+  group_by(reporterDesc, period) |>
+  summarise(total_country_value = sum(fobvalue, na.rm = TRUE),
+            .groups = "drop")
+
+# ── Step 3: RCA calculation ──────────────────────────────────────────────────
+donor_rca <- donor_prod |>
+  left_join(donor_total,   by = c("reporterDesc", "period")) |>
+  left_join(world_prod_07, by = "period") |>
+  left_join(world_total,   by = "period") |>
+  mutate(
+    RCA = (country_product_value / total_country_value) /
+          (world_product_value   / total_world_value),
+    RCA_w = winsorize(RCA),
+    RCA_w = if_else(RCA_w <= 0, NA_real_, RCA_w),   # 🔑 critical fix
+    log_mean_rca = log(RCA_w),
+    country = reporterDesc
+  ) |>
+  select(country, period, log_mean_rca)
+
+# ── Step 4: Mexico RCA ───────────────────────────────────────────────────────
+mexico_07 <- rca_big_df |>
+  filter(sector == "07",
+         nchar(cmdCode) == 4,
+         period %in% years) |>
+  mutate(
+    RCA_w = winsorize(RCA),
+    RCA_w = if_else(RCA_w <= 0, NA_real_, RCA_w)
+  ) |>
+  group_by(period) |>
+  summarise(log_mean_rca = mean(log(RCA_w), na.rm = TRUE),
+            .groups = "drop") |>
+  mutate(country = "Mexico")
+
+# ── Step 5: FORCE BALANCED PANEL ─────────────────────────────────────────────
+donor_rca_balanced <- donor_rca |>
+  complete(country, period = years)
+
+mexico_07 <- mexico_07 |>
+  complete(period = years)
+
+# ── Step 6: Drop countries with ANY missing data ─────────────────────────────
+valid_countries <- donor_rca_balanced |>
+  group_by(country) |>
+  summarise(
+    n_years = sum(!is.na(log_mean_rca)),
+    has_na= any(is.na(log_mean_rca) | !is.finite(log_mean_rca))
+  ) |>
+  filter(n_years == length(years), !has_na) |>
+  pull(country)
+
+donor_rca_clean <- donor_rca_balanced |>
+  filter(country %in% valid_countries)
+
+# Check Mexico validity
+if (any(is.na(mexico_07$log_mean_rca))) {
+  stop("Mexico has missing data — cannot run SCM")
+}
+
+# ── Step 7: Final panel ──────────────────────────────────────────────────────
+donor_panel <- bind_rows(mexico_07, donor_rca_clean)
+
+# Diagnostics
+
+cat("Final donor countries:\n")
+
+donor_panel |> distinct(country) |> print() #shows us the donor countries with data from 1990:2000
+
+donor_panel <- donor_panel |>
+  group_by(country, period) |>
+  summarise(log_mean_rca = mean(log_mean_rca, na.rm = TRUE),
+            .groups = "drop") |>
+  filter(country != "Cyprus") 
+
+
+# ── Step 8: Pre-treatment plot ───────────────────────────────────────────────
+ggplot(donor_panel,
+       aes(x = period, y = log_mean_rca, color = country,
+           linewidth = if_else(country == "Mexico", 1.2, 0.6))) +
+  geom_line() +
+  geom_vline(xintercept = 1994, linetype = "dashed", color = "blue") +
+  scale_linewidth_identity() +
+  labs(title = "Pre-treatment trends (1990–1993)",
+       x = "Year", y = "log(RCA)") +
+  theme_bw()
+
+# ── Step 9: Synthetic Control ────────────────────────────────────────────────
+synth_mexico <- donor_panel |>
+  synthetic_control(
+    outcome = log_mean_rca,
+    unit= country,
+    time = period,
+    i_unit = "Mexico",
+    i_time = 1994,
+    generate_placebos = TRUE
+  ) |>
+  generate_predictor(time_window = 1990:1993,
+                     mean_pre = mean(log_mean_rca, na.rm = TRUE)) |>
+  generate_predictor(time_window = 1990, rca_1990 = log_mean_rca) |>
+  generate_predictor(time_window = 1991, rca_1991 = log_mean_rca) |>
+  generate_predictor(time_window = 1992, rca_1992 = log_mean_rca) |>
+  generate_predictor(time_window = 1993, rca_1993 = log_mean_rca) |>
+  generate_weights(
+    optimization_window = 1990:1993,
+    margin_ipop = 0.02,
+    sigf_ipop = 7,
+    bound_ipop = 6
+  ) |>
+  generate_control()
+
+# ── Step 10: Plots ───────────────────────────────────────────────────────────
+plot_trends(synth_mexico) +
+  geom_vline(xintercept = 1994, linetype = "dashed", color = "blue") +
+  labs(title = "Actual vs Synthetic Mexico",
+       y = "log(RCA)") +
+  theme_bw()
+
+plot_differences(synth_mexico) +
+  geom_vline(xintercept = 1994, linetype = "dashed", color = "blue") +
+  labs(title = "Treatment Effect (Gap)",
+       y = "Δ log(RCA)") +
+  theme_bw()
+
+plot_placebos(synth_mexico) +
+  geom_vline(xintercept = 1994, linetype = "dashed", color = "blue")
+
+plot_weights(synth_mexico)
+
+# ── Step 11: Inference ───────────────────────────────────────────────────────
+grab_significance(synth_mexico)
+
+```
+
+### Attempt 4 Non - Wind
+
+```{r}
+library(tidyverse)
+library(tidysynth)
+
+# ─────────────────────────────────────────────────────────────
+# PARAMETERS
+# ─────────────────────────────────────────────────────────────
+years <- 1990:2000
+eps <- 1e-6
+# ─────────────────────────────────────────────────────────────
+# WORLD DATA
+# ─────────────────────────────────────────────────────────────
+world_prod_07 <- map_dfr(time_periods, function(t) {
+  world_file <- file.path(base_path,
+                          paste0("world_xports_prod_i_time_", t),
+                          paste0("world_xports_sector_07_time_", t, ".csv"))
+  if (!file.exists(world_file)) return(NULL)
+
+  read_csv(world_file, show_col_types = FALSE) |>
+    necessary_variables()
+}) |>
+  filter(period %in% years) |>
+  group_by(period) |>
+  summarise(world_product_value = sum(fobvalue, na.rm = TRUE),
+            .groups = "drop")
+
+world_total <- world_xports_all |>
+  group_by(period) |>
+  summarise(total_world_value = sum(fobvalue, na.rm = TRUE),
+            .groups = "drop") |>
+  filter(period %in% years)
+
+# ─────────────────────────────────────────────────────────────
+# DONOR DATA
+# ─────────────────────────────────────────────────────────────
+donor_prod <- country_a_xports_sector_07 |>
+  group_by(reporterDesc, period) |>
+  summarise(country_product_value = sum(fobvalue, na.rm = TRUE),
+            .groups = "drop")
+
+donor_total <- country_a_xports_of_all_prods |>
+  group_by(reporterDesc, period) |>
+  summarise(total_country_value = sum(fobvalue, na.rm = TRUE),
+            .groups = "drop")
+
+# ─────────────────────────────────────────────────────────────
+# NEW STABLE RCA (NO WINSORIZATION)
+# ─────────────────────────────────────────────────────────────
+donor_rca <- donor_prod |>
+  left_join(donor_total,   by = c("reporterDesc", "period")) |>
+  left_join(world_prod_07, by = "period") |>
+  left_join(world_total,   by = "period") |>
+  mutate(
+    log_RCA =
+      log(country_product_value + eps) -
+      log(total_country_value + eps) -
+      (log(world_product_value + eps) -
+       log(total_world_value + eps)),
+    country = reporterDesc
+  ) |>
+  select(country, period, log_RCA)
+
+# ─────────────────────────────────────────────────────────────
+# MEXICO (same transformation for consistency)
+# ─────────────────────────────────────────────────────────────
+mexico_07 <- rca_big_df |>
+  filter(sector == "07",
+         nchar(cmdCode) == 4,
+         period %in% years) |>
+  group_by(period) |>
+  summarise(
+    log_RCA = mean(
+      log((RCA + eps)),
+      na.rm = TRUE
+    ),
+    .groups = "drop"
+  ) |>
+  mutate(country = "Mexico")
+
+# ─────────────────────────────────────────────────────────────
+# BALANCE PANEL (CRITICAL FOR SCM)
+# ─────────────────────────────────────────────────────────────
+donor_panel <- bind_rows(mexico_07, donor_rca) |>
+  group_by(country, period) |>
+  summarise(log_RCA = mean(log_RCA, na.rm = TRUE),
+            .groups = "drop") |>
+  complete(country, period = years)
+
+# ─────────────────────────────────────────────────────────────
+# DROP INCOMPLETE COUNTRIES (NO MISSING YEARS)
+# ─────────────────────────────────────────────────────────────
+valid_countries <- donor_panel |>
+  filter(country != "Cyprus") |>
+  group_by(country) |>
+  summarise(
+    ok = all(!is.na(log_RCA) & is.finite(log_RCA)),
+    n  = sum(!is.na(log_RCA))
+  ) |>
+  filter(ok, n == length(years)) |>
+  pull(country)
+
+donor_panel <- donor_panel |>
+  filter(country %in% valid_countries)
+
+# ─────────────────────────────────────────────────────────────
+# SCM MODEL
+# ─────────────────────────────────────────────────────────────
+synth_mexico <- donor_panel |>
+  synthetic_control(
+    outcome = log_RCA,
+    unit  = country,
+    time = period,
+    i_unit = "Mexico",
+    i_time = 1994,
+    generate_placebos = TRUE
+  ) |>
+  generate_predictor(time_window = 1990:1993,
+                     mean_pre = mean(log_RCA, na.rm = TRUE)) |>
+  generate_predictor(time_window = 1990, rca_1990 = log_RCA) |>
+  generate_predictor(time_window = 1991, rca_1991 = log_RCA) |>
+  generate_predictor(time_window = 1992, rca_1992 = log_RCA) |>
+  generate_predictor(time_window = 1993, rca_1993 = log_RCA) |>
+  generate_weights(
+    optimization_window = 1990:1993,
+    margin_ipop = 0.02,
+    sigf_ipop = 7,
+    bound_ipop = 6
+  ) |>
+  generate_control()
+
+# ─────────────────────────────────────────────────────────────
+# PLOTS
+# ─────────────────────────────────────────────────────────────
+plot_trends(synth_mexico) +
+  geom_vline(xintercept = 1994, linetype = "dashed", color = "blue")
+
+plot_differences(synth_mexico) +
+ geom_vline(xintercept = 1994, linetype = "dashed", color = "blue") +
+  annotate("text", x = 1994.2, y = Inf, vjust = 1.5,
+           hjust = 0, size = 3, color = "blue", label = "NAFTA") +
+  labs(title    = "NAFTA Effect: Actual minus Synthetic log(RCA)",
+       subtitle = "Sector 07 Vegetables — negative gap = below counterfactual",
+       x = "Year", y = "Δ log(RCA)") +
+  theme_bw()
+
+plot_placebos(synth_mexico) +
+ geom_vline(xintercept = 1994, linetype = "dashed", color = "blue") +
+  labs(title    = "Placebo Tests: Mexico vs Donor Countries",
+       subtitle = "Mexico's gap should be larger than donor country gaps",
+       x = "Year", y = "Δ log(RCA)") +
+  theme_bw()
+
+plot_weights(synth_mexico)
+
+# ─────────────────────────────────────────────────────────────
+# INFERENCE
+# ─────────────────────────────────────────────────────────────
+k <- grab_significance(synth_mexico)
+```
+
+### Interpretationof SCM
+
+Placebo Plot (Image 1)
+
+Mexico's pink line is persistently below zero post-1994 and stays there through 2000, while most donor country gray lines oscillate around zero. This is exactly what you want to see — Mexico's gap is distinctive and sustained. However, some donor lines also dip negative post-1994, which means Mexico's gap is not uniquely extreme. This matters for the significance test below.
+
+Trends Plot (Image 2)
+Similarly as previously, there exists persistent ~0.7 log point gap post-1994, while synthetic stays flat around 1.9 while Mexico stays around 1.1. The finding is robust to dropping Cyprus, as Cyprus is a small economy with pre-treatment behavior exhibiting a trend similar to Mexico skewing the weights.
+
+Significance Table (Image 3)
+
+Mexico's rank is 18 out of 23. The MSPE ratio (post/pre mean squared prediction error) for Mexico is 1.72. This means Mexico's post-treatment fit is only 1.72 times worse than its pre-treatment fit which is a low ratio. Seventeen donor countries have a higher MSPE ratio than Mexico, meaning their post-treatment gaps are larger relative to their pre-treatment fit than Mexico's is.
+
+The Fisher's exact p-value is 0.78. This is not statistically significant by any conventional threshold. You cannot reject the null hypothesis that NAFTA had no effect on Mexico's vegetable RCA.
+
+
+Hence, the synthetic control estimates suggest Mexico's log(RCA) in the selected HS codes for sector 07 was approximately 0.7 log points below its synthetic counterfactual throughout 1994–2000. This is consistent with the FE estimates in Table X. However, the pre-treatment fit is poor as the pre-MSPE = 0.433, reflecting macroeconomic volatility in Mexico during 1990–1993 that the donor pool countries are unable to replicate replicate. As a result, Mexico's post/pre MSPE ratio of 1.72 ranks 18th out of 23 units, ultimately yielding a Fisher's p-value of 0.78. The synthetic control therefore provides suggestive but rather statistically inconclusive evidence of a NAFTA effect on Mexico's vegetable comparative advantage. These results should be interpreted alongside the panel regression estimates as corroborating descriptive evidence rather than causal identification.
+
+For next steps, this analysis can be done for other sectors, like the Vehicles and Machinery sector, and 
+
 
 
 # Miscellaneous and Extra Code
@@ -1685,4 +2300,342 @@ for (s in sectors) { ## for all elements s in list sectors,
   
   print(allplots)
 }
+```
+
+
+### SCM Failed Attempts
+
+### Attempt 1
+
+```{r}
+# 
+# library(tidysynth)
+# 
+# # ── Winsorize function ────────────────────────────────────────────────────────
+# winsorize <- function(x, low = 0.01, high = 0.99) {
+#   q <- quantile(x, probs = c(low, high), na.rm = TRUE)
+#   pmax(pmin(x, q[2]), q[1])
+# }
+# 
+# # ── Step 1: Load and clean country names ──────────────────────────────────────
+# country_a_xports_prod_i <- read_csv("regression/scm/country_a_xports_prod_i.csv") |>
+#   mutate(reporterDesc = case_when(
+#     str_detect(reporterDesc, "rkiye") ~ "Turkey",
+#     str_detect(reporterDesc, "Bolivia") ~ "Bolivia",
+#     TRUE ~ reporterDesc
+#   ))
+# 
+# country_a_xports_allprods <- read_csv("regression/scm/country_a_xports_allprods.csv") |>
+#   mutate(reporterDesc = case_when(
+#     str_detect(reporterDesc, "rkiye") ~ "Turkey",
+#     str_detect(reporterDesc, "Bolivia") ~ "Bolivia",
+#     TRUE ~ reporterDesc
+#   ))
+# 
+# # ── Step 2: World sector 07 exports from existing pipeline files ─────────────
+# world_prod_07 <- map_dfr(time_periods, function(t) {
+#   world_file <- file.path(base_path,
+#                           paste0("world_xports_prod_i_time_", t),
+#                           paste0("world_xports_sector_07_time_", t, ".csv"))
+#   if (!file.exists(world_file)) {
+#     message("Missing: ", world_file)
+#     return(NULL)
+#   }
+#   read_csv(world_file, show_col_types = FALSE) |> necessary_variables()
+# }) |>
+#   filter(period >= 1992, period <= 2000) |>
+#   group_by(period) |>
+#   summarise(world_product_value = sum(fobvalue, na.rm = TRUE),
+#             .groups = "drop")
+# 
+# # World total exports
+# world_total <- world_xports_all |>
+#   group_by(period) |>
+#   summarise(total_world_value = sum(fobvalue, na.rm = TRUE),
+#             .groups = "drop") |>
+#   filter(period >= 1992, period <= 2000)
+# 
+# # ── Step 3: Compute donor country RCAs ───────────────────────────────────────
+# 
+# donor_prod <- country_a_xports_prod_i |>
+#   group_by(reporterDesc, period) |>
+#   summarise(country_product_value = sum(fobvalue, na.rm = TRUE),
+#             .groups = "drop")
+# 
+# donor_total <- country_a_xports_allprods |>
+#   group_by(reporterDesc, period) |>
+#   summarise(total_country_value = sum(fobvalue, na.rm = TRUE),
+#             .groups = "drop")
+# 
+# donor_rca <- donor_prod |>
+#   left_join(donor_total,   by = c("reporterDesc", "period")) |>
+#   left_join(world_prod_07, by = "period") |>
+#   left_join(world_total,   by = "period") |>
+#   mutate(
+#     RCA = (country_product_value / total_country_value) /
+#                    (world_product_value   / total_world_value),
+#     RCA_w = winsorize(RCA),
+#     log_mean_rca = log(RCA_w),
+#     country = reporterDesc
+#   ) |>
+#   select(country, period, log_mean_rca)
+# 
+# # ── Step 4: Mexico sector 07 RCA ─────────────────────────────────────────────
+# 
+# mexico_07 <- rca_big_df |>
+#   filter(sector == "07",
+#          nchar(cmdCode) == 4,
+#          period >= 1992,
+#          period <= 2000) |>
+#   mutate(RCA_w = winsorize(RCA)) |>
+#   group_by(period) |>
+#   summarise(log_mean_rca = mean(log(RCA_w), na.rm = TRUE),
+#             .groups = "drop") |>
+#   mutate(country = "Mexico")
+# 
+# # ── Step 5: Stack and clean donor panel ───────────────────────────────────────
+# 
+# drop_countries <- c("Kenya", "Costa Rica", "Honduras", "Turkey", "Ecuador")
+# 
+# donor_panel <- bind_rows(mexico_07, donor_rca) |>
+#   filter(
+#     !country %in% drop_countries,
+#     period >= 1992,
+#     period <= 2000,
+#     !is.na(log_mean_rca),
+#     is.finite(log_mean_rca)
+#   )
+# 
+# # ── Step 6: Completeness check ────────────────────────────────────────────────
+# 
+# cat("Countries in donor pool:\n")
+# donor_panel |> distinct(country) |> print()
+# 
+# cat("\nCompleteness matrix:\n")
+# donor_panel |>
+#   pivot_wider(names_from = country, values_from = log_mean_rca) |>
+#   arrange(period) |>
+#   print(n = 9)
+# 
+# # ── Step 7: Pre-treatment trajectory plot ──────
+# ggplot(donor_panel,
+#        aes(x = period, y = log_mean_rca, color = country,
+#            linewidth = if_else(country == "Mexico", 1.2, 0.6))) +
+#   geom_line() +
+#   geom_vline(xintercept = 1994, linetype = "dashed", color = "blue") +
+#   scale_linewidth_identity() +
+#   labs(title    = "Sector 07 log(RCA): Mexico and Donor Countries",
+#        subtitle = "Pre-1994 parallel trends check",
+#        x = "Year", y = "log(mean RCA)", color = "Country") +
+#   theme_bw()
+# 
+# 
+# # ── Step 8: Synthetic control ─────────────────────────────────────────────────
+# synth_mexico <- donor_panel |>
+#   synthetic_control(
+#     outcome           = log_mean_rca,
+#     unit              = country,
+#     time              = period,
+#     i_unit            = "Mexico",
+#     i_time            = 1994,
+#     generate_placebos = TRUE
+#   ) |>
+#   generate_predictor(time_window = 1992:1993,
+#                      mean_pre = mean(log_mean_rca, na.rm = TRUE)) |>
+#   generate_predictor(time_window = 1992, rca_1992 = log_mean_rca) |>
+#   generate_predictor(time_window = 1993, rca_1993 = log_mean_rca) |>
+#   generate_weights(
+#     optimization_window = 1992:1993,
+#     margin_ipop         = 0.02,
+#     sigf_ipop           = 7,
+#     bound_ipop          = 6
+#   ) |>
+#   generate_control()
+# 
+# # ── Step 9: Plots ─────────────────────────────────────────────────────────────
+# 
+# # Actual vs synthetic
+# 
+# plot_trends(synth_mexico) +
+#   geom_vline(xintercept = 1994, linetype = "dashed", color = "blue") +
+#   labs(title    = "Mexico Sector 07 (Vegetables): Actual vs Synthetic RCA",
+#        subtitle = "Donor pool: Indonesia, Spain, Bolivia, Ecuador, Morocco, Guatemala, Argentina",
+#        x = "Year", y = "log(mean RCA)") +
+#   theme_bw()
+# 
+# # Gap plot
+# plot_differences(synth_mexico) +
+#   geom_vline(xintercept = 1994, linetype = "dashed", color = "blue") +
+#   annotate("text", x = 1994.1, y = Inf, vjust = 1.5,
+#            hjust = 0, size = 3, color = "blue", label = "NAFTA") +
+#   labs(title    = "NAFTA Effect: Gap Between Actual and Synthetic log(RCA)",
+#        subtitle = "Positive = Mexico outperformed its counterfactual",
+#        x = "Year", y = "Δ log(mean RCA)") +
+#   theme_bw()
+# 
+# # Placebo tests
+# plot_placebos(synth_mexico) +
+#   geom_vline(xintercept = 1994, linetype = "dashed", color = "blue") +
+#   labs(title    = "Placebo Tests: Mexico vs Donor Countries",
+#        subtitle = "Mexico's post-1994 gap should exceed placebo distribution",
+#        x = "Year", y = "Δ log(mean RCA)") +
+#   theme_bw()
+# 
+# # Donor weights
+# plot_weights(synth_mexico) +
+#   labs(title    = "Synthetic Control Donor Weights",
+#        subtitle = "Which countries construct Mexico's counterfactual")
+# 
+# # ── Step 10: Significance ─────────────────────────────────────────────────────
+# grab_signifiance(synth_mexico)
+
+```
+
+### Attempt 2
+
+```{r}
+#library(tidysynth)
+
+# ── Winsorize function (if not already defined) ───────────────────────────────
+#winsorize <- function(x, low = 0.01, high = 0.99) {
+ # q <- quantile(x, probs = c(low, high), na.rm = TRUE)
+  #pmax(pmin(x, q[2]), q[1])
+#}
+
+# ── Step 1: World sector 07 exports from existing pipeline files ──────────────
+#world_prod_07 <- map_dfr(time_periods, function(t) {
+ # world_file <- file.path(base_path,
+  #                        paste0("world_xports_prod_i_time_", t),
+   #                       paste0("world_xports_sector_07_time_", t, ".csv"))
+  #if (!file.exists(world_file)) {
+   # message("Missing: ", world_file)
+ #   return(NULL)
+ # }
+ # read_csv(world_file, show_col_types = FALSE) |> necessary_variables()
+#}) |>
+ # filter(period >= 1990, period <= 2000) |>
+#  group_by(period) |>
+ # summarise(world_product_value = sum(fobvalue, na.rm = TRUE),
+  #          .groups = "drop")
+
+# World total exports (aggregate — cmdCode = -2)
+#world_total <- world_xports_all |>
+#  group_by(period) |>
+ # summarise(total_world_value = sum(fobvalue, na.rm = TRUE),
+  #          .groups = "drop") |>
+ # filter(period >= 1990, period <= 2000)
+
+# ── Step 2: Donor country RCAs ────────────────────────────────────────────────
+#donor_prod <- scm_countries_xports_07 |>
+#  group_by(reporterDesc, period) |>
+ # summarise(country_product_value = sum(fobvalue, na.rm = TRUE),
+      #      .groups = "drop")
+
+#donor_total <- scm_countries_xports_all |>
+#  group_by(reporterDesc, period) |>
+ # summarise(total_country_value = sum(fobvalue, na.rm = TRUE),
+   #         .groups = "drop")
+
+#donor_rca <- donor_prod |>
+ # left_join(donor_total,   by = c("reporterDesc", "period")) |>
+ # left_join(world_prod_07, by = "period") |>
+ # left_join(world_total,   by = "period") |>
+  #mutate(
+  #  RCA          = (country_product_value / total_country_value) /
+  #                 (world_product_value   / total_world_value),
+  #  RCA_w        = winsorize(RCA),
+   # log_mean_rca = log(RCA_w),
+  #  country      = reporterDesc
+#  ) |>
+  #select(country, period, log_mean_rca)
+
+# ── Step 3: Mexico sector 07 RCA ─────────────────────────────────────────────
+#mexico_07 <- rca_big_df |>
+ # filter(sector == "07",
+  #       nchar(cmdCode) == 4,
+   #      period >= 1990,
+   #      period <= 2000) |>
+ # mutate(RCA_w = winsorize(RCA)) |>
+#  group_by(period) |>
+ # summarise(log_mean_rca = mean(log(RCA_w), na.rm = TRUE),
+    #        .groups = "drop") |>
+ # mutate(country = "Mexico")
+
+# ── Step 4: Stack into donor panel ───────────────────────────────────────────
+#donor_panel <- bind_rows(mexico_07, donor_rca)
+
+# Sanity check
+#onor_panel |> count(country)
+#summary(donor_panel$log_mean_rca)
+
+# ── Step 5: Pre-treatment trajectory plot ────────────────────────────────────
+# Visually check whether donor countries track Mexico pre-1994
+#ggplot(donor_panel, 
+ #      aes(x = period, y = log_mean_rca, color = country,
+  #         linewidth = if_else(country == "Mexico", 1.2, 0.6))) +
+ # geom_line() +
+ # geom_vline(xintercept = 1994, linetype = "dashed", color = "blue") +
+# scale_linewidth_identity() +
+#  labs(title    = "Sector 07 log(RCA): Mexico and Donor Countries",
+#       subtitle = "Pre-1994 parallel trends check",
+ #      x = "Year", y = "log(mean RCA)", color = "Country") +
+ # theme_bw()
+
+# ── Step 6: Synthetic control ─────────────────────────────────────────────────
+#synth_mexico <- donor_panel |>
+ # synthetic_control(
+ #   outcome           = log_mean_rca,
+ #   unit              = country,
+ #   time              = period,
+ #   i_unit            = "Mexico",
+#    i_time            = 1994,
+##    generate_placebos = TRUE
+#   ) |>
+#   generate_predictor(time_window = 1990, rca_1990 = log_mean_rca) |>
+#   generate_predictor(time_window = 1991, rca_1991 = log_mean_rca) |>
+#   generate_predictor(time_window = 1992, rca_1992 = log_mean_rca) |>
+#   generate_predictor(time_window = 1993, rca_1993 = log_mean_rca) |>
+#   generate_weights(
+#     optimization_window = 1990:1993,
+#     margin_ipop         = 0.02,
+#     sigf_ipop           = 7,
+#     bound_ipop          = 6
+#   ) |>
+#   generate_control()
+# 
+# # ── Step 7: Plots ─────────────────────────────────────────────────────────────
+# 
+# # Actual vs synthetic trajectory
+# plot_trends(synth_mexico) +
+#   geom_vline(xintercept = 1994, linetype = "dashed", color = "blue") +
+#   labs(title    = "Mexico Sector 07 (Vegetables): Actual vs Synthetic RCA",
+#        subtitle = "Donor pool: Brazil, Chile, Colombia, Peru",
+#        x = "Year", y = "log(mean RCA)") +
+#   theme_bw()
+# 
+# # Gap plot: actual minus synthetic
+# plot_differences(synth_mexico) +
+#   geom_vline(xintercept = 1994, linetype = "dashed", color = "blue") +
+#   annotate("text", x = 1994.2, y = Inf, vjust = 1.5,
+#            hjust = 0, size = 3, color = "blue", label = "NAFTA") +
+#   labs(title    = "NAFTA Effect: Gap Between Actual and Synthetic log(RCA)",
+#        subtitle = "Positive = Mexico outperformed its counterfactual",
+#        x = "Year", y = "Δ log(mean RCA)") +
+#   theme_bw()
+# 
+# # Placebo tests
+# plot_placebos(synth_mexico) +
+#   geom_vline(xintercept = 1994, linetype = "dashed", color = "blue") +
+#   labs(title    = "Placebo Tests: Mexico vs Donor Countries",
+#        subtitle = "Mexico's post-1994 gap should exceed placebo distribution",
+#        x = "Year", y = "Δ log(mean RCA)") +
+#   theme_bw()
+# 
+# # Donor weights
+# plot_weights(synth_mexico) +
+#   labs(title    = "Synthetic Control Weights",
+#        subtitle = "Which countries construct Mexico's counterfactual")
+# 
+# # ── Step 8: Significance ──────────────────────────────────────────────────────
+# grab_signifiance(synth_mexico)
 ```
