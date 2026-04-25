@@ -137,7 +137,6 @@ calculate_rca_generalized <- function(country_sector_df,
 # Recocded loading dataframes
 
 ```{r}
-
 #setup 
 
 base_path <- "~/Desktop/SPROJ/workplace/input"
@@ -1976,7 +1975,8 @@ donor_panel <- donor_panel |>
   group_by(country, period) |>
   summarise(log_mean_rca = mean(log_mean_rca, na.rm = TRUE),
             .groups = "drop") |>
-  filter(country != "Cyprus") 
+  filter(country != "Cyprus") |>
+  filter(country != "Switzerland") 
 
 
 # ── Step 8: Pre-treatment plot ───────────────────────────────────────────────
@@ -2121,7 +2121,8 @@ mexico_07 <- rca_big_df |>
 # ─────────────────────────────────────────────────────────────
 # BALANCE PANEL (CRITICAL FOR SCM)
 # ─────────────────────────────────────────────────────────────
-donor_panel <- bind_rows(mexico_07, donor_rca) |>
+donor_panel <- bind_rows(mexico_07, donor_rca |> 
+                           filter(!country %in% c("Cyprus"))) |>
   group_by(country, period) |>
   summarise(log_RCA = mean(log_RCA, na.rm = TRUE),
             .groups = "drop") |>
@@ -2131,11 +2132,11 @@ donor_panel <- bind_rows(mexico_07, donor_rca) |>
 # DROP INCOMPLETE COUNTRIES (NO MISSING YEARS)
 # ─────────────────────────────────────────────────────────────
 valid_countries <- donor_panel |>
-  filter(country != "Cyprus") |>
+ filter(!country %in% c("Cyprus")) |>
   group_by(country) |>
   summarise(
     ok = all(!is.na(log_RCA) & is.finite(log_RCA)),
-    n  = sum(!is.na(log_RCA))
+    n = sum(!is.na(log_RCA))
   ) |>
   filter(ok, n == length(years)) |>
   pull(country)
@@ -2173,19 +2174,19 @@ synth_mexico <- donor_panel |>
 # PLOTS
 # ─────────────────────────────────────────────────────────────
 plot_trends(synth_mexico) +
-  geom_vline(xintercept = 1994, linetype = "dashed", color = "blue")
+  geom_vline(xintercept = 1994, linetype = "dashed", color = "red")
 
 plot_differences(synth_mexico) +
- geom_vline(xintercept = 1994, linetype = "dashed", color = "blue") +
+ geom_vline(xintercept = 1994, linetype = "dashed", color = "red") +
   annotate("text", x = 1994.2, y = Inf, vjust = 1.5,
-           hjust = 0, size = 3, color = "blue", label = "NAFTA") +
+           hjust = 0, size = 3, color = "red", label = "NAFTA") +
   labs(title    = "NAFTA Effect: Actual minus Synthetic log(RCA)",
        subtitle = "Sector 07 Vegetables — negative gap = below counterfactual",
        x = "Year", y = "Δ log(RCA)") +
   theme_bw()
 
 plot_placebos(synth_mexico) +
- geom_vline(xintercept = 1994, linetype = "dashed", color = "blue") +
+ geom_vline(xintercept = 1994, linetype = "dashed", color = "red") +
   labs(title    = "Placebo Tests: Mexico vs Donor Countries",
        subtitle = "Mexico's gap should be larger than donor country gaps",
        x = "Year", y = "Δ log(RCA)") +
@@ -2199,7 +2200,126 @@ plot_weights(synth_mexico)
 k <- grab_significance(synth_mexico)
 ```
 
-### Interpretationof SCM
+
+### Significance table
+
+```{r}
+
+# Recreate the data (replace with your actual grab_significance output)
+scm_significance_tbl <- grab_significance(synth_mexico)
+
+scm_significance_tbl |>
+  arrange(rank) |>
+  select(unit_name, type, pre_mspe, post_mspe, mspe_ratio, rank, fishers_exact_pvalue) |>
+  gt() |>
+  
+  # --- Column Labels ---
+  cols_label(
+    unit_name           = "Unit",
+    type                = "Type",
+    pre_mspe            = md("Pre-MSPE"),
+    post_mspe           = md("Post-MSPE"),
+    mspe_ratio          = md("MSPE Ratio"),
+    rank                = "Rank",
+    fishers_exact_pvalue = md("Fisher's *p*-value")
+  ) |>
+  
+  # --- Title & Subtitle ---
+  tab_header(
+    title    = md("**SCM Inference: MSPE Ratios & Permutation Test**"),
+    subtitle = md("Pre/Post-NAFTA ratio ranked across donor pool")
+  ) |>
+  
+  # --- Source note ---
+  tab_source_note(
+    source_note = md("*Note:* Fisher's exact p-value = rank / total units | MSPE = Mean Squared Prediction Error")
+  ) |>
+  
+  # --- Highlight Mexico row ---
+  tab_style(
+    style = list(
+      cell_fill(color = "#1a3a5c"),
+      cell_text(color = "white", weight = "bold")
+    ),
+    locations = cells_body(rows = unit_name == "Mexico")
+  ) |>
+  
+  # --- Highlight significant p-values (< 0.10) in donor rows ---
+  tab_style(
+    style = cell_text(color = "#c0392b", weight = "bold"),
+    locations = cells_body(
+      columns = fishers_exact_pvalue,
+      rows = fishers_exact_pvalue < 0.10 & unit_name != "Mexico"
+    )
+  ) |>
+  
+  # --- Stripe alternating rows ---
+  opt_row_striping() |>
+  
+  # --- Number formatting ---
+  fmt_number(
+    columns  = c(pre_mspe, post_mspe),
+    decimals = 4
+  ) |>
+  fmt_number(
+    columns  = mspe_ratio,
+    decimals = 1,
+    use_seps = TRUE
+  ) |>
+  fmt_number(
+    columns  = fishers_exact_pvalue,
+    decimals = 3
+  ) |>
+  
+  # --- Column alignment ---
+  cols_align(align = "left",   columns = c(unit_name, type)) |>
+  cols_align(align = "center", columns = rank) |>
+  cols_align(align = "right",  columns = c(pre_mspe, post_mspe, mspe_ratio, fishers_exact_pvalue)) |>
+  
+  # --- Column widths ---
+  cols_width(
+    unit_name            ~ px(120),
+    type                 ~ px(70),
+    pre_mspe             ~ px(90),
+    post_mspe            ~ px(90),
+    mspe_ratio           ~ px(100),
+    rank                 ~ px(55),
+    fishers_exact_pvalue ~ px(130)
+  ) |>
+  
+  # --- Spanners grouping MSPE columns ---
+  tab_spanner(
+    label   = md("**Prediction Error**"),
+    columns = c(pre_mspe, post_mspe, mspe_ratio)
+  ) |>
+  tab_spanner(
+    label   = md("**Inference**"),
+    columns = c(rank, fishers_exact_pvalue)
+  ) |>
+  
+  # --- Overall theme ---
+  opt_table_font(font = google_font("IBM Plex Sans")) |>
+  tab_options(
+  table.border.top.color            = "#1a3a5c",
+  table.border.top.width            = px(3),
+  table.border.bottom.color         = "#1a3a5c",
+  table.border.bottom.width         = px(2),
+  heading.border.bottom.color       = "#1a3a5c",
+  column_labels.border.top.color    = "transparent",
+  column_labels.border.bottom.color = "#1a3a5c",
+  column_labels.border.bottom.width = px(2),
+  column_labels.font.weight         = "bold",
+  column_labels.background.color    = "#f0f4f8",
+  table.font.size                   = px(13),
+  heading.title.font.size           = px(15),
+  heading.subtitle.font.size        = px(12),
+  data_row.padding                  = px(6),
+  source_notes.font.size            = px(11),
+  table.width                       = pct(85)
+)
+```
+
+### Interpretation of SCM
 
 Placebo Plot (Image 1)
 
